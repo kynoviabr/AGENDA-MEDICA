@@ -1,0 +1,163 @@
+-- Seed E2E — Renovação Automática
+-- Objetivo: gerar 1 tarefa ativa em v_renewal_tasks_active para validar bloco de renovações no CRM.
+-- Seguro para reexecução: usa IF NOT EXISTS/checagens por nome.
+
+DO $$
+DECLARE
+  v_clinic_id uuid;
+  v_patient_id uuid;
+  v_treatment_id uuid;
+  v_proposal_id uuid;
+  v_contract_id uuid;
+  v_appointment_id uuid;
+  v_session_count integer;
+BEGIN
+  SELECT id
+    INTO v_clinic_id
+  FROM public.clinics
+  ORDER BY created_at
+  LIMIT 1;
+
+  IF v_clinic_id IS NULL THEN
+    RAISE EXCEPTION 'Nenhuma clínica encontrada. Crie/importe uma clínica primeiro.';
+  END IF;
+
+  INSERT INTO public.patients (
+    clinic_id, full_name, phone, email, status
+  )
+  SELECT v_clinic_id, 'E2E Renovacao Seed', '11999990001', 'e2e.renovacao@teste.com', 'active'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.patients p
+    WHERE p.clinic_id = v_clinic_id
+      AND p.full_name = 'E2E Renovacao Seed'
+  );
+
+  SELECT id
+    INTO v_patient_id
+  FROM public.patients
+  WHERE clinic_id = v_clinic_id
+    AND full_name = 'E2E Renovacao Seed'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  INSERT INTO public.treatments (
+    clinic_id, name, description, duration_minutes, num_sessions, price, is_active, renewal_enabled, renewal_trigger_days
+  )
+  SELECT v_clinic_id, 'E2E Tratamento Renovacao 10', 'Seed para renovação automática', 60, 10, 1000, true, true, 7
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.treatments t
+    WHERE t.clinic_id = v_clinic_id
+      AND t.name = 'E2E Tratamento Renovacao 10'
+  );
+
+  SELECT id
+    INTO v_treatment_id
+  FROM public.treatments
+  WHERE clinic_id = v_clinic_id
+    AND name = 'E2E Tratamento Renovacao 10'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  INSERT INTO public.proposals (
+    clinic_id, patient_id, proposal_number, status, total_amount, final_amount, valid_until
+  )
+  SELECT v_clinic_id, v_patient_id, 'PROP-E2E-RENOV-001', 'accepted', 1000, 1000, current_date + 30
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.proposals p
+    WHERE p.clinic_id = v_clinic_id
+      AND p.patient_id = v_patient_id
+      AND p.proposal_number = 'PROP-E2E-RENOV-001'
+  );
+
+  SELECT id
+    INTO v_proposal_id
+  FROM public.proposals
+  WHERE clinic_id = v_clinic_id
+    AND patient_id = v_patient_id
+    AND proposal_number = 'PROP-E2E-RENOV-001'
+  LIMIT 1;
+
+  INSERT INTO public.proposal_items (
+    proposal_id, treatment_id, quantity, unit_price, subtotal
+  )
+  SELECT v_proposal_id, v_treatment_id, 1, 1000, 1000
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.proposal_items pi
+    WHERE pi.proposal_id = v_proposal_id
+      AND pi.treatment_id = v_treatment_id
+  );
+
+  INSERT INTO public.contracts (
+    clinic_id, patient_id, proposal_id, contract_number, status, start_date
+  )
+  SELECT v_clinic_id, v_patient_id, v_proposal_id, 'CONT-E2E-RENOV-001', 'active', current_date - 7
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.contracts c
+    WHERE c.clinic_id = v_clinic_id
+      AND c.patient_id = v_patient_id
+      AND c.contract_number = 'CONT-E2E-RENOV-001'
+  );
+
+  SELECT id
+    INTO v_contract_id
+  FROM public.contracts
+  WHERE clinic_id = v_clinic_id
+    AND patient_id = v_patient_id
+    AND contract_number = 'CONT-E2E-RENOV-001'
+  LIMIT 1;
+
+  INSERT INTO public.appointments (
+    clinic_id, patient_id, treatment_id, contract_id, appointment_type,
+    start_time, end_time, scheduled_at, duration_minutes, status
+  )
+  SELECT
+    v_clinic_id,
+    v_patient_id,
+    v_treatment_id,
+    v_contract_id,
+    'treatment_session',
+    now() - interval '1 day',
+    now() - interval '1 day' + interval '60 minutes',
+    now() - interval '1 day',
+    60,
+    'completed'
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.appointments a
+    WHERE a.clinic_id = v_clinic_id
+      AND a.patient_id = v_patient_id
+      AND a.treatment_id = v_treatment_id
+      AND a.contract_id = v_contract_id
+  );
+
+  SELECT id
+    INTO v_appointment_id
+  FROM public.appointments
+  WHERE clinic_id = v_clinic_id
+    AND patient_id = v_patient_id
+    AND treatment_id = v_treatment_id
+    AND contract_id = v_contract_id
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  SELECT count(*)
+    INTO v_session_count
+  FROM public.session_records sr
+  WHERE sr.clinic_id = v_clinic_id
+    AND sr.patient_id = v_patient_id
+    AND sr.treatment_id = v_treatment_id;
+
+  WHILE v_session_count < 8 LOOP
+    v_session_count := v_session_count + 1;
+    INSERT INTO public.session_records (
+      clinic_id, appointment_id, patient_id, treatment_id,
+      session_number, total_sessions, performed_at
+    ) VALUES (
+      v_clinic_id, v_appointment_id, v_patient_id, v_treatment_id,
+      v_session_count, 10, now() - make_interval(days => (10 - v_session_count))
+    );
+  END LOOP;
+
+  RAISE NOTICE 'Seed concluído. Verifique v_renewal_tasks_active para o paciente E2E Renovacao Seed.';
+END $$;

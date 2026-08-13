@@ -1,0 +1,230 @@
+-- Release: Agenda Avançada Clinova - Fase 1
+-- Execute na ordem:
+-- 1) Bloco Lista de Espera
+-- 2) Bloco WhatsApp Foundation
+
+-- =====================================================================
+-- 1) Lista de Espera
+-- =====================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'waitlist_priority') THEN
+    CREATE TYPE public.waitlist_priority AS ENUM ('normal', 'high', 'urgent');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'waitlist_status') THEN
+    CREATE TYPE public.waitlist_status AS ENUM (
+      'waiting',
+      'match_found',
+      'contact_attempted',
+      'scheduled',
+      'expired',
+      'cancelled_by_patient',
+      'cancelled_by_clinic'
+    );
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'waitlist_contact_preference') THEN
+    CREATE TYPE public.waitlist_contact_preference AS ENUM ('whatsapp', 'phone', 'email');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'waitlist_window_type') THEN
+    CREATE TYPE public.waitlist_window_type AS ENUM ('this_week', 'next_week', 'this_month', 'custom');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.appointment_waitlist (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  patient_id uuid REFERENCES public.patients(id) ON DELETE SET NULL,
+  lead_id uuid REFERENCES public.leads(id) ON DELETE SET NULL,
+  preferred_professional_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  treatment_id uuid REFERENCES public.treatments(id) ON DELETE SET NULL,
+  window_type public.waitlist_window_type NOT NULL,
+  window_start date NOT NULL,
+  window_end date NOT NULL,
+  preferred_periods text[] NOT NULL DEFAULT ARRAY['morning','afternoon','evening'],
+  min_duration_minutes integer NOT NULL DEFAULT 60 CHECK (min_duration_minutes > 0),
+  priority public.waitlist_priority NOT NULL DEFAULT 'normal',
+  status public.waitlist_status NOT NULL DEFAULT 'waiting',
+  contact_preference public.waitlist_contact_preference NOT NULL DEFAULT 'whatsapp',
+  contact_phone text,
+  notes text,
+  resulting_appointment_id uuid REFERENCES public.appointments(id) ON DELETE SET NULL,
+  last_checked_at timestamptz,
+  match_found_at timestamptz,
+  expires_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT waitlist_patient_or_lead_required CHECK (patient_id IS NOT NULL OR lead_id IS NOT NULL),
+  CONSTRAINT waitlist_window_valid CHECK (window_end >= window_start)
+);
+
+CREATE TABLE IF NOT EXISTS public.waitlist_notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  waitlist_id uuid NOT NULL REFERENCES public.appointment_waitlist(id) ON DELETE CASCADE,
+  matched_slot_start timestamptz NOT NULL,
+  matched_slot_end timestamptz NOT NULL,
+  matched_professional_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  notification_sent_at timestamptz NOT NULL DEFAULT now(),
+  action_taken text NOT NULL DEFAULT 'none',
+  action_taken_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  action_taken_at timestamptz,
+  resulting_appointment_id uuid REFERENCES public.appointments(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT waitlist_notification_slot_valid CHECK (matched_slot_end > matched_slot_start)
+);
+
+CREATE TABLE IF NOT EXISTS public.waitlist_agent_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  entries_checked integer NOT NULL DEFAULT 0,
+  matches_found integer NOT NULL DEFAULT 0,
+  notifications_sent integer NOT NULL DEFAULT 0,
+  errors jsonb,
+  status text NOT NULL DEFAULT 'success',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_clinic_status ON public.appointment_waitlist (clinic_id, status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_window ON public.appointment_waitlist (window_start, window_end);
+CREATE INDEX IF NOT EXISTS idx_waitlist_professional ON public.appointment_waitlist (preferred_professional_id);
+CREATE INDEX IF NOT EXISTS idx_waitlist_priority_created ON public.appointment_waitlist (priority, created_at);
+CREATE INDEX IF NOT EXISTS idx_waitlist_notifications_waitlist ON public.waitlist_notifications (waitlist_id, notification_sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_waitlist_logs_clinic_started ON public.waitlist_agent_logs (clinic_id, started_at DESC);
+
+DROP TRIGGER IF EXISTS update_appointment_waitlist_updated_at ON public.appointment_waitlist;
+CREATE TRIGGER update_appointment_waitlist_updated_at
+BEFORE UPDATE ON public.appointment_waitlist
+FOR EACH ROW
+EXECUTE FUNCTION public.update_updated_at_column();
+
+ALTER TABLE public.appointment_waitlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.waitlist_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.waitlist_agent_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "clinic staff can manage appointment_waitlist" ON public.appointment_waitlist;
+CREATE POLICY "clinic staff can manage appointment_waitlist"
+ON public.appointment_waitlist
+FOR ALL
+USING (public.is_clinic_staff(auth.uid(), clinic_id))
+WITH CHECK (public.is_clinic_staff(auth.uid(), clinic_id));
+
+DROP POLICY IF EXISTS "clinic staff can manage waitlist_notifications" ON public.waitlist_notifications;
+CREATE POLICY "clinic staff can manage waitlist_notifications"
+ON public.waitlist_notifications
+FOR ALL
+USING (public.is_clinic_staff(auth.uid(), clinic_id))
+WITH CHECK (public.is_clinic_staff(auth.uid(), clinic_id));
+
+DROP POLICY IF EXISTS "clinic staff can view waitlist_agent_logs" ON public.waitlist_agent_logs;
+CREATE POLICY "clinic staff can view waitlist_agent_logs"
+ON public.waitlist_agent_logs
+FOR SELECT
+USING (public.is_clinic_staff(auth.uid(), clinic_id));
+
+-- =====================================================================
+-- 2) WhatsApp Foundation
+-- =====================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'reminder_channel') THEN
+    CREATE TYPE public.reminder_channel AS ENUM ('whatsapp', 'email', 'sms');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'reminder_status') THEN
+    CREATE TYPE public.reminder_status AS ENUM ('pending', 'sent', 'failed', 'cancelled');
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'whatsapp_command_status') THEN
+    CREATE TYPE public.whatsapp_command_status AS ENUM ('pending', 'confirmed', 'cancelled', 'expired');
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.appointment_reminders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  appointment_id uuid NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
+  channel public.reminder_channel NOT NULL DEFAULT 'whatsapp',
+  scheduled_for timestamptz NOT NULL,
+  status public.reminder_status NOT NULL DEFAULT 'pending',
+  sent_at timestamptz,
+  error_message text,
+  payload jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.appointment_whatsapp_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  appointment_id uuid NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
+  token text NOT NULL UNIQUE,
+  status public.whatsapp_command_status NOT NULL DEFAULT 'pending',
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  consumed_command text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.whatsapp_command_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id uuid NOT NULL REFERENCES public.clinics(id) ON DELETE CASCADE,
+  appointment_id uuid REFERENCES public.appointments(id) ON DELETE SET NULL,
+  token_id uuid REFERENCES public.appointment_whatsapp_tokens(id) ON DELETE SET NULL,
+  source_phone text,
+  incoming_text text,
+  parsed_command text,
+  result_status text NOT NULL DEFAULT 'ignored',
+  details jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_appointment_reminders_clinic_status ON public.appointment_reminders (clinic_id, status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_appointment_reminders_appointment ON public.appointment_reminders (appointment_id, channel);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_tokens_status_expiry ON public.appointment_whatsapp_tokens (status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_logs_clinic_created ON public.whatsapp_command_logs (clinic_id, created_at DESC);
+
+ALTER TABLE public.appointment_reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appointment_whatsapp_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_command_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "clinic staff can manage appointment_reminders" ON public.appointment_reminders;
+CREATE POLICY "clinic staff can manage appointment_reminders"
+ON public.appointment_reminders
+FOR ALL
+USING (public.is_clinic_staff(auth.uid(), clinic_id))
+WITH CHECK (public.is_clinic_staff(auth.uid(), clinic_id));
+
+DROP POLICY IF EXISTS "clinic staff can manage appointment_whatsapp_tokens" ON public.appointment_whatsapp_tokens;
+CREATE POLICY "clinic staff can manage appointment_whatsapp_tokens"
+ON public.appointment_whatsapp_tokens
+FOR ALL
+USING (public.is_clinic_staff(auth.uid(), clinic_id))
+WITH CHECK (public.is_clinic_staff(auth.uid(), clinic_id));
+
+DROP POLICY IF EXISTS "clinic staff can view whatsapp_command_logs" ON public.whatsapp_command_logs;
+CREATE POLICY "clinic staff can view whatsapp_command_logs"
+ON public.whatsapp_command_logs
+FOR SELECT
+USING (public.is_clinic_staff(auth.uid(), clinic_id));

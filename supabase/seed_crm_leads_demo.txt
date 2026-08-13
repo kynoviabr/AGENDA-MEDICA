@@ -1,0 +1,237 @@
+DO $$
+DECLARE
+  cfg_clinic_id uuid := 'fd8bacd4-6d49-4404-ae44-494be156b2a0';
+  lead_new_id uuid := gen_random_uuid();
+  lead_contacted_id uuid := gen_random_uuid();
+  lead_scheduled_id uuid := gen_random_uuid();
+  lead_attended_id uuid := gen_random_uuid();
+  appt_scheduled_id uuid := gen_random_uuid();
+  appt_attended_id uuid := gen_random_uuid();
+BEGIN
+  -- Se sua clínica atual usar outro ID, troque apenas o valor de cfg_clinic_id acima.
+
+  DELETE FROM public.lead_interactions
+  WHERE clinic_id = cfg_clinic_id
+    AND lead_id IN (
+      SELECT id
+      FROM public.leads
+      WHERE clinic_id = cfg_clinic_id
+        AND phone IN (
+          '11988887777',
+          '11997776666',
+          '11996665555',
+          '11995554444'
+        )
+    );
+
+  DELETE FROM public.appointments
+  WHERE clinic_id = cfg_clinic_id
+    AND lead_id IN (
+      SELECT id
+      FROM public.leads
+      WHERE clinic_id = cfg_clinic_id
+        AND phone IN (
+          '11988887777',
+          '11997776666',
+          '11996665555',
+          '11995554444'
+        )
+    );
+
+  DELETE FROM public.leads
+  WHERE clinic_id = cfg_clinic_id
+    AND phone IN (
+      '11988887777',
+      '11997776666',
+      '11996665555',
+      '11995554444'
+    );
+
+  INSERT INTO public.leads (
+    id,
+    clinic_id,
+    full_name,
+    phone,
+    cpf,
+    email,
+    source,
+    kanban_stage,
+    treatments_of_interest,
+    notes,
+    created_at,
+    updated_at,
+    stage_changed_at,
+    last_interaction_at
+  ) VALUES
+    (
+      lead_new_id,
+      cfg_clinic_id,
+      'Mariana Costa',
+      '11988887777',
+      null,
+      'mariana.costa@teste.com',
+      'Instagram',
+      'new_lead',
+      ARRAY[]::text[],
+      'Lead novo para testar contato inicial.',
+      now() - interval '2 hours',
+      now() - interval '2 hours',
+      now() - interval '2 hours',
+      now() - interval '2 hours'
+    ),
+    (
+      lead_contacted_id,
+      cfg_clinic_id,
+      'Paulo Mendes',
+      '11997776666',
+      '12345678901',
+      'paulo.mendes@teste.com',
+      'Indicação',
+      'contacted',
+      ARRAY[]::text[],
+      'Já recebeu primeiro contato e pediu retorno.',
+      now() - interval '2 days',
+      now() - interval '1 day',
+      now() - interval '1 day',
+      now() - interval '12 hours'
+    ),
+    (
+      lead_scheduled_id,
+      cfg_clinic_id,
+      'Fernanda Alves',
+      '11996665555',
+      '98765432100',
+      'fernanda.alves@teste.com',
+      'Google',
+      'scheduled',
+      ARRAY[]::text[],
+      'Avaliação marcada para testar agenda vinculada ao lead.',
+      now() - interval '4 days',
+      now() - interval '1 day',
+      now() - interval '1 day',
+      now() - interval '20 hours'
+    ),
+    (
+      lead_attended_id,
+      cfg_clinic_id,
+      'Ricardo Nunes',
+      '11995554444',
+      null,
+      'ricardo.nunes@teste.com',
+      'WhatsApp',
+      'attended',
+      ARRAY[]::text[],
+      'Compareceu à avaliação e está pronto para testar proposta.',
+      now() - interval '6 days',
+      now() - interval '6 hours',
+      now() - interval '6 hours',
+      now() - interval '6 hours'
+    );
+
+  INSERT INTO public.appointments (
+    id,
+    clinic_id,
+    patient_id,
+    lead_id,
+    treatment_id,
+    professional_id,
+    appointment_type,
+    status,
+    start_time,
+    end_time,
+    scheduled_at,
+    duration_minutes,
+    notes,
+    credit_check_required,
+    credit_check_status,
+    created_at,
+    updated_at,
+    confirmed_at
+  ) VALUES
+    (
+      appt_scheduled_id,
+      cfg_clinic_id,
+      null,
+      lead_scheduled_id,
+      null,
+      null,
+      'evaluation',
+      'scheduled',
+      (date_trunc('day', now()) + interval '1 day' + interval '10 hours'),
+      (date_trunc('day', now()) + interval '1 day' + interval '11 hours'),
+      (date_trunc('day', now()) + interval '1 day' + interval '10 hours'),
+      60,
+      'Avaliação criada para testar CRM + Agenda.',
+      true,
+      'pending',
+      now() - interval '20 hours',
+      now() - interval '20 hours',
+      null
+    ),
+    (
+      appt_attended_id,
+      cfg_clinic_id,
+      null,
+      lead_attended_id,
+      null,
+      null,
+      'evaluation',
+      'completed',
+      (date_trunc('day', now()) - interval '1 day' + interval '15 hours'),
+      (date_trunc('day', now()) - interval '1 day' + interval '16 hours'),
+      (date_trunc('day', now()) - interval '1 day' + interval '15 hours'),
+      60,
+      'Avaliação concluída para testar criação de proposta.',
+      false,
+      'not_required',
+      now() - interval '30 hours',
+      now() - interval '5 hours',
+      now() - interval '28 hours'
+    );
+
+  UPDATE public.leads
+  SET appointment_id = appt_scheduled_id
+  WHERE id = lead_scheduled_id;
+
+  UPDATE public.leads
+  SET appointment_id = appt_attended_id
+  WHERE id = lead_attended_id;
+
+  INSERT INTO public.lead_interactions (
+    clinic_id,
+    lead_id,
+    type,
+    notes,
+    performed_at
+  ) VALUES
+    (
+      cfg_clinic_id,
+      lead_new_id,
+      'note',
+      'Lead recém capturado pelo formulário do Instagram.',
+      now() - interval '2 hours'
+    ),
+    (
+      cfg_clinic_id,
+      lead_contacted_id,
+      'whatsapp',
+      'Mensagem enviada para apresentar a clínica e entender interesse.',
+      now() - interval '12 hours'
+    ),
+    (
+      cfg_clinic_id,
+      lead_scheduled_id,
+      'call_made',
+      'Contato concluído e avaliação confirmada para amanhã.',
+      now() - interval '20 hours'
+    ),
+    (
+      cfg_clinic_id,
+      lead_attended_id,
+      'in_person',
+      'Paciente compareceu à avaliação e pediu proposta.',
+      now() - interval '6 hours'
+    );
+
+  RAISE NOTICE 'Leads demo do CRM aplicados com sucesso para a clínica %.', cfg_clinic_id;
+END $$;
