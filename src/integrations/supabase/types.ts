@@ -2356,28 +2356,40 @@ export type Database = {
       }
       professional_health_insurances: {
         Row: {
+          accepts_new_patients: boolean
+          ai_instructions: string | null
+          authorization_required: boolean
           clinic_id: string
           created_at: string
           health_insurance_id: string
           id: string
+          notes: string | null
           professional_id: string
           status: string
           updated_at: string
         }
         Insert: {
+          accepts_new_patients?: boolean
+          ai_instructions?: string | null
+          authorization_required?: boolean
           clinic_id: string
           created_at?: string
           health_insurance_id: string
           id?: string
+          notes?: string | null
           professional_id: string
           status?: string
           updated_at?: string
         }
         Update: {
+          accepts_new_patients?: boolean
+          ai_instructions?: string | null
+          authorization_required?: boolean
           clinic_id?: string
           created_at?: string
           health_insurance_id?: string
           id?: string
+          notes?: string | null
           professional_id?: string
           status?: string
           updated_at?: string
@@ -2458,32 +2470,123 @@ export type Database = {
           },
         ]
       }
+      professional_settings: {
+        Row: {
+          accept_new_patients: boolean
+          allow_ai_booking: boolean
+          allow_ai_cancellation: boolean
+          allow_ai_rescheduling: boolean
+          allow_waitlist: boolean
+          cancellation_notice_hours: number
+          clinic_id: string
+          created_at: string
+          default_appointment_duration_minutes: number
+          id: string
+          maximum_booking_days: number
+          minimum_booking_notice_hours: number
+          professional_id: string
+          updated_at: string
+        }
+        Insert: {
+          accept_new_patients?: boolean
+          allow_ai_booking?: boolean
+          allow_ai_cancellation?: boolean
+          allow_ai_rescheduling?: boolean
+          allow_waitlist?: boolean
+          cancellation_notice_hours?: number
+          clinic_id: string
+          created_at?: string
+          default_appointment_duration_minutes?: number
+          id?: string
+          maximum_booking_days?: number
+          minimum_booking_notice_hours?: number
+          professional_id: string
+          updated_at?: string
+        }
+        Update: {
+          accept_new_patients?: boolean
+          allow_ai_booking?: boolean
+          allow_ai_cancellation?: boolean
+          allow_ai_rescheduling?: boolean
+          allow_waitlist?: boolean
+          cancellation_notice_hours?: number
+          clinic_id?: string
+          created_at?: string
+          default_appointment_duration_minutes?: number
+          id?: string
+          maximum_booking_days?: number
+          minimum_booking_notice_hours?: number
+          professional_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_settings_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_settings_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: true
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       professional_treatments: {
         Row: {
+          can_ai_schedule: boolean | null
+          clinic_id: string
           created_at: string
+          duration_minutes: number | null
           id: string
+          private_price: number | null
           professional_id: string
+          requires_previous_evaluation: boolean | null
+          show_price: boolean | null
           status: string
           treatment_id: string
           updated_at: string
         }
         Insert: {
+          can_ai_schedule?: boolean | null
+          clinic_id: string
           created_at?: string
+          duration_minutes?: number | null
           id?: string
+          private_price?: number | null
           professional_id: string
+          requires_previous_evaluation?: boolean | null
+          show_price?: boolean | null
           status?: string
           treatment_id: string
           updated_at?: string
         }
         Update: {
+          can_ai_schedule?: boolean | null
+          clinic_id?: string
           created_at?: string
+          duration_minutes?: number | null
           id?: string
+          private_price?: number | null
           professional_id?: string
+          requires_previous_evaluation?: boolean | null
+          show_price?: boolean | null
           status?: string
           treatment_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "professional_treatments_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "professional_treatments_professional_id_fkey"
             columns: ["professional_id"]
@@ -3378,6 +3481,8 @@ export type Database = {
       }
       treatments: {
         Row: {
+          can_be_scheduled_by_ai: boolean
+          can_be_scheduled_online: boolean
           category: string | null
           category_id: string | null
           clinic_id: string
@@ -3394,9 +3499,14 @@ export type Database = {
           price: number
           renewal_enabled: boolean
           renewal_trigger_days: number
+          requires_evaluation: boolean
+          show_price_to_ai: boolean
+          show_price_to_patient: boolean
           updated_at: string
         }
         Insert: {
+          can_be_scheduled_by_ai?: boolean
+          can_be_scheduled_online?: boolean
           category?: string | null
           category_id?: string | null
           clinic_id: string
@@ -3413,9 +3523,14 @@ export type Database = {
           price?: number
           renewal_enabled?: boolean
           renewal_trigger_days?: number
+          requires_evaluation?: boolean
+          show_price_to_ai?: boolean
+          show_price_to_patient?: boolean
           updated_at?: string
         }
         Update: {
+          can_be_scheduled_by_ai?: boolean
+          can_be_scheduled_online?: boolean
           category?: string | null
           category_id?: string | null
           clinic_id?: string
@@ -3432,6 +3547,9 @@ export type Database = {
           price?: number
           renewal_enabled?: boolean
           renewal_trigger_days?: number
+          requires_evaluation?: boolean
+          show_price_to_ai?: boolean
+          show_price_to_patient?: boolean
           updated_at?: string
         }
         Relationships: [

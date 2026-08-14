@@ -23,6 +23,7 @@ import AccessGroupsTab from '@/components/settings/AccessGroupsTab';
 import WhatsAppAiSettingsTab from '@/components/settings/WhatsAppAiSettingsTab';
 import HealthcareSettingsTab from '@/components/settings/HealthcareSettingsTab';
 import LocationsTab from '@/components/settings/LocationsTab';
+import ProfessionalRulesTab from '@/components/settings/ProfessionalRulesTab';
 import TreatmentsPage from '@/pages/clinic/TreatmentsPage';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -226,6 +227,7 @@ export default function SettingsPage() {
           <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
           <TabsTrigger value="locations"><MapPin className="w-4 h-4 mr-1" />Unidades</TabsTrigger>
+          <TabsTrigger value="professional-rules"><Settings className="w-4 h-4 mr-1" />Regras</TabsTrigger>
           <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
           <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Tratamentos</TabsTrigger>
           <TabsTrigger value="whatsapp-ai"><MessageSquare className="w-4 h-4 mr-1" />WhatsApp IA</TabsTrigger>
@@ -513,6 +515,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="locations"><LocationsTab /></TabsContent>
+        <TabsContent value="professional-rules"><ProfessionalRulesTab /></TabsContent>
 
         <TabsContent value="healthcare">
           <HealthcareSettingsTab />

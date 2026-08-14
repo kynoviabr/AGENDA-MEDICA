@@ -36,6 +36,12 @@ Clínicas podem manter uma ou várias unidades em **Configurações → Unidades
 
 As relações usam `clinic_id`, RLS e validações no banco para impedir que uma consulta associe unidade ou profissional pertencente a outra clínica. Um profissional só pode receber consultas e disponibilidades em unidades às quais esteja vinculado e ativo.
 
+## Regras por profissional
+
+Em **Configurações → Regras**, cada profissional possui regras próprias de antecedência, horizonte da agenda, cancelamento, duração padrão, novos pacientes, lista de espera e permissões da IA. Os vínculos com tratamentos aceitam duração, preço, exposição do preço, agendamento por IA e avaliação prévia específicos; quando não preenchidos, prevalecem os defaults do tratamento.
+
+Os vínculos com convênios também registram aceitação de novos pacientes, necessidade de autorização e instruções administrativas para a IA. Esses campos não implementam faturamento, cobrança, guias ou autorização eletrônica: servem exclusivamente à recepção e ao agendamento.
+
 ## WhatsApp com IA — funcionalidade central
 
 O WhatsApp com IA faz parte do núcleo do produto e **não está entre os módulos MVP desativados**. A arquitetura é multi-clínica:

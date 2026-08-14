@@ -7,6 +7,12 @@ export interface ProfessionalTreatment {
   id: string;
   professional_id: string;
   treatment_id: string;
+  clinic_id: string;
+  duration_minutes: number | null;
+  private_price: number | null;
+  show_price: boolean | null;
+  can_ai_schedule: boolean | null;
+  requires_previous_evaluation: boolean | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -38,7 +44,8 @@ export function useProfessionalTreatments() {
   useEffect(() => { list(); }, [list]);
 
   const create = async (professional_id: string, treatment_id: string) => {
-    const { data, error } = await supabase.from('professional_treatments').insert({ professional_id, treatment_id }).select().single();
+    if (!clinicId) return null;
+    const { data, error } = await supabase.from('professional_treatments').insert({ clinic_id: clinicId, professional_id, treatment_id }).select().single();
     if (error) { toast.error(error.message); return null; }
     toast.success('Tratamento vinculado');
     await list();
