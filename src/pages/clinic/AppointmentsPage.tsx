@@ -8,7 +8,6 @@ import { useAgendaProfessionals } from '@/hooks/useAgendaProfessionals';
 import { PageHeader } from '@/components/ui/page-header';
 import { BrandButton } from '@/components/ui/brand-button';
 import { BrandBadge, type BadgeStatus } from '@/components/ui/brand-badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin, MoreHorizontal, RefreshCw } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
 import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
@@ -30,6 +29,8 @@ import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/types';
 import { getAgendaErrorMessage } from '@/lib/agenda/errors';
+import { AgendaStatCard } from '@/components/agenda/AgendaStatCard';
+import { AgendaSidePanel } from '@/components/agenda/AgendaSidePanel';
 
 type AgendaRpcError = { message: string; code?: string; details?: string; hint?: string };
 type AgendaRpcResult<T> = { data: T | null; error: AgendaRpcError | null };
@@ -80,9 +81,6 @@ type WaitlistRow = Database['public']['Tables']['appointment_waitlist']['Row'] &
 type WaitlistNotificationRow = Database['public']['Tables']['waitlist_notifications']['Row'] & {
   appointment_waitlist?: WaitlistRow | null;
 };
-type ReminderRow = Database['public']['Tables']['appointment_reminders']['Row'];
-type WhatsAppCommandLogRow = Database['public']['Tables']['whatsapp_command_logs']['Row'];
-type AgendaJobExecutionRow = Database['public']['Tables']['agenda_job_executions']['Row'];
 type ContractLite = Pick<Database['public']['Tables']['contracts']['Row'], 'id' | 'patient_id' | 'proposal_id' | 'status'>;
 type ProposalItemLite = Pick<Database['public']['Tables']['proposal_items']['Row'], 'proposal_id' | 'treatment_id'>;
 type SessionRecordLite = Pick<Database['public']['Tables']['session_records']['Row'], 'patient_id' | 'treatment_id'>;
@@ -167,7 +165,6 @@ export default function AppointmentsPage() {
   const [filterProfessional, setFilterProfessional] = useState('all');
   const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [queueExpanded, setQueueExpanded] = useState(true);
   const [createFormError, setCreateFormError] = useState('');
   const [duration, setDuration] = useState('60');
   const [notes, setNotes] = useState('');
@@ -248,7 +245,7 @@ export default function AppointmentsPage() {
     }
   }, [currentDate, viewMode]);
 
-  const { data: appointments = [] } = useQuery({
+  const { data: appointments = [], isLoading: appointmentsLoading, isError: appointmentsError, refetch: refetchAppointments } = useQuery({
     queryKey: ['appointments', clinicId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -451,48 +448,6 @@ export default function AppointmentsPage() {
         throw error;
       }
       return (data || []) as WaitlistNotificationRow[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: reminderQueue = [] } = useQuery({
-    queryKey: ['appointment-reminders', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('appointment_reminders')
-        .select('*')
-        .eq('clinic_id', clinicId!)
-        .order('created_at', { ascending: false })
-        .limit(120);
-      if (error) throw error;
-      return (data || []) as ReminderRow[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: whatsappLogs = [] } = useQuery({
-    queryKey: ['whatsapp-command-logs', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('whatsapp_command_logs')
-        .select('*')
-        .eq('clinic_id', clinicId!)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return (data || []) as WhatsAppCommandLogRow[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: agendaJobExecutions = [] } = useQuery({
-    queryKey: ['agenda-job-executions', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('agenda_job_executions')
-        .select('*')
-        .or(`clinic_id.is.null,clinic_id.eq.${clinicId}`)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return (data || []) as AgendaJobExecutionRow[];
     },
     enabled: !!clinicId,
   });
@@ -720,6 +675,8 @@ export default function AppointmentsPage() {
     return {
       totalInView: filteredAppointments.length,
       today: todayAppointments.length,
+      confirmedToday: todayAppointments.filter((appointment) => appointment.status === 'confirmed').length,
+      awaitingToday: todayAppointments.filter((appointment) => appointment.status === 'scheduled').length,
       readyForSession: readyForSession.length,
       noShow: filteredAppointments.filter((appointment) => appointment.status === 'no_show').length,
       unassigned: filteredAppointments.filter((appointment) => !appointment.professional_id).length,
@@ -732,41 +689,6 @@ export default function AppointmentsPage() {
       .sort((a, b) => +getAppointmentStartDate(a) - +getAppointmentStartDate(b))
       .slice(0, 5);
   }, [filteredAppointments]);
-
-  const agendaSignals = useMemo(() => {
-    const evaluations = filteredAppointments.filter((appointment) => appointment.appointment_type === 'evaluation').length;
-    const batches = filteredAppointments.filter((appointment) => appointment.is_batch).length;
-    const blockedDays = calendarDays.filter((day) => {
-      const dayStart = startOfDay(day).getTime();
-      const dayEnd = endOfDay(day).getTime();
-      return appointmentBlocks.some((block) => {
-        const blockStart = new Date(block.start_at).getTime();
-        const blockEnd = new Date(block.end_at).getTime();
-        return blockStart <= dayEnd && blockEnd >= dayStart;
-      });
-    }).length;
-
-    return {
-      evaluations,
-      batches,
-      blockedDays,
-      blocks: appointmentBlocks.length,
-    };
-  }, [filteredAppointments, appointmentBlocks, calendarDays]);
-  const whatsappOpsSummary = useMemo(() => {
-    const pending = reminderQueue.filter((item) => item.status === 'pending').length;
-    const sent = reminderQueue.filter((item) => item.status === 'sent').length;
-    const failed = reminderQueue.filter((item) => item.status === 'failed').length;
-    const inboundApplied = whatsappLogs.filter((log) => log.result_status === 'applied').length;
-    const jobSuccess = agendaJobExecutions.filter((job) => job.status === 'completed').length;
-    return {
-      pending,
-      sent,
-      failed,
-      inboundApplied,
-      jobSuccess,
-    };
-  }, [reminderQueue, whatsappLogs, agendaJobExecutions]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -1384,58 +1306,8 @@ export default function AppointmentsPage() {
 
   return (
     <div>
-      <PageHeader title="Agenda" description="Gerencie os agendamentos da clínica">
-        <div className="flex flex-wrap gap-2">
-          <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-            <SelectTrigger className="w-52"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
-            <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
-          </Select>
-          <>
-            <BrandButton variant="outline" onClick={() => setAvailabilityDialogOpen(true)}>
-              <CalendarCog className="w-4 h-4" /> Disponibilidade
-            </BrandButton>
-            <BrandButton variant="outline" onClick={() => setBlocksDialogOpen(true)}>
-              <Lock className="w-4 h-4" /> Bloqueios
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => {
-                resetWaitlistForm();
-                setWaitlistDialogOpen(true);
-              }}
-            >
-              <BellRing className="w-4 h-4" /> Lista de Espera
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => sendReminderQueueMutation.mutate()}
-              disabled={sendReminderQueueMutation.isPending}
-            >
-              {sendReminderQueueMutation.isPending ? 'Processando...' : 'Fila Lembretes WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => dispatchReminderMutation.mutate()}
-              disabled={dispatchReminderMutation.isPending}
-            >
-              {dispatchReminderMutation.isPending ? 'Enviando...' : 'Disparar Lembretes WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => generateDailySummaryMutation.mutate()}
-              disabled={generateDailySummaryMutation.isPending}
-            >
-              {generateDailySummaryMutation.isPending ? 'Gerando...' : 'Resumo Diário WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => runAgendaJobsMutation.mutate('manual')}
-              disabled={runAgendaJobsMutation.isPending}
-            >
-              {runAgendaJobsMutation.isPending ? 'Executando...' : 'Rodar Jobs Agenda'}
-            </BrandButton>
-          </>
-          <BrandButton onClick={() => {
+      <PageHeader title="Agenda" description="Gerencie agendamentos, disponibilidade e atendimentos da clínica.">
+        <BrandButton className="h-10 shadow-sm" onClick={() => {
             resetForm();
             setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
             if (isProfessional && currentProfessionalId) {
@@ -1443,91 +1315,62 @@ export default function AppointmentsPage() {
             }
             setDialogOpen(true);
           }}>
-            <Plus className="w-4 h-4" /> Novo Agendamento
-          </BrandButton>
-        </div>
+          <Plus className="h-4 w-4" /> Novo agendamento
+        </BrandButton>
       </PageHeader>
 
-      <div className="grid gap-3 md:grid-cols-5 mb-6">
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <CalendarCheck2 className="w-5 h-5 text-primary mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.totalInView}</p>
-            <p className="text-xs text-muted-foreground">Agendamentos no período</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <Clock3 className="w-5 h-5 text-primary mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.today}</p>
-            <p className="text-xs text-muted-foreground">Atendimentos de hoje</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <CheckCircle2 className="w-5 h-5 text-success mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.readyForSession}</p>
-            <p className="text-xs text-muted-foreground">Prontos para sessão</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <AlertTriangle className="w-5 h-5 text-warning mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.noShow}</p>
-            <p className="text-xs text-muted-foreground">Não compareceu</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in border-warning/30 cursor-pointer" onClick={() => setFilterProfessional('unassigned')}>
-          <CardContent className="p-4">
-            <AlertTriangle className="w-5 h-5 text-warning mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.unassigned}</p>
-            <p className="text-xs text-muted-foreground">Não atribuído</p>
-          </CardContent>
-        </Card>
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
+        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+          <SelectTrigger className="h-10 w-[210px] border-0 bg-secondary/60 shadow-none"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
+          <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setAvailabilityDialogOpen(true)}>
+          <CalendarCog className="h-4 w-4" /> Disponibilidade
+        </BrandButton>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setBlocksDialogOpen(true)}>
+          <Lock className="h-4 w-4" /> Bloqueios{appointmentBlocks.length > 0 ? ` (${appointmentBlocks.length})` : ''}
+        </BrandButton>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => { resetWaitlistForm(); setWaitlistDialogOpen(true); }}>
+          <BellRing className="h-4 w-4" /> Lista de espera{waitlistEntries.length > 0 ? ` (${waitlistEntries.length})` : ''}
+        </BrandButton>
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <BrandButton className="h-10" size="sm" variant="ghost" aria-label="Abrir automações da agenda">
+                <MoreHorizontal className="h-4 w-4" /> Automações
+              </BrandButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Operações administrativas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => sendReminderQueueMutation.mutate()}>Preparar fila de lembretes</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => dispatchReminderMutation.mutate()}>Disparar lembretes WhatsApp</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => generateDailySummaryMutation.mutate()}>Gerar resumo diário</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => runAgendaJobsMutation.mutate('manual')}>Executar jobs da agenda</button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5 mb-6">
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA pendente</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.pending}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA enviado</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.sent}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA falhou</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.failed}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Inbound aplicado</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.inboundApplied}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Jobs concluídos</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.jobSuccess}</p>
-          </CardContent>
-        </Card>
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <AgendaStatCard value={operationalSummary.totalInView} label="Agendamentos no período" icon={CalendarCheck2} />
+        <AgendaStatCard value={operationalSummary.today} label="Atendimentos hoje" icon={Clock3} />
+        <AgendaStatCard value={operationalSummary.confirmedToday} label="Confirmados hoje" icon={CheckCircle2} tone="success" />
+        <AgendaStatCard value={operationalSummary.awaitingToday} label="Aguardando confirmação" icon={Clock3} tone="warning" />
+        <AgendaStatCard value={operationalSummary.noShow} label="Faltas no período" icon={X} tone="danger" />
+        <AgendaStatCard value={waitlistEntries.length} label="Na lista de espera" icon={BellRing} />
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate_(-1)} className="p-2 rounded-lg hover:bg-secondary"><ChevronLeft className="w-5 h-5" /></button>
-          <h2 className="text-lg font-semibold text-foreground capitalize min-w-[200px] text-center">{headerLabel}</h2>
-          <button onClick={() => navigate_(1)} className="p-2 rounded-lg hover:bg-secondary"><ChevronRight className="w-5 h-5" /></button>
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-1">
+          <button aria-label="Período anterior" onClick={() => navigate_(-1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronLeft className="h-5 w-5" /></button>
+          <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
+          <h2 className="ml-2 min-w-0 text-base font-semibold capitalize text-foreground sm:min-w-[210px] sm:text-lg">{headerLabel}</h2>
+          <BrandButton size="sm" variant="outline" className="ml-1 h-9" onClick={() => setCurrentDate(new Date())}>Hoje</BrandButton>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {viewMode === 'doctors-day' ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1564,7 +1407,7 @@ export default function AppointmentsPage() {
             </DropdownMenu>
           ) : (
             <Select value={filterProfessional} onValueChange={setFilterProfessional}>
-              <SelectTrigger className="w-[190px]"><SelectValue placeholder="Selecionar médico" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[175px]"><SelectValue placeholder="Selecionar médico" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os médicos</SelectItem>
                 <SelectItem value="unassigned">Não atribuído</SelectItem>
@@ -1580,7 +1423,7 @@ export default function AppointmentsPage() {
             </Select>
           )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[190px]"><SelectValue placeholder="Todos status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[165px]"><SelectValue placeholder="Todos status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos status</SelectItem>
               <SelectItem value="scheduled">Agendado</SelectItem>
@@ -1593,159 +1436,43 @@ export default function AppointmentsPage() {
             </SelectContent>
           </Select>
           <Tabs value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
-            <TabsList>
-              <TabsTrigger value="doctors-day">Médicos × Dia</TabsTrigger>
-              <TabsTrigger value="month">Mês</TabsTrigger>
-              <TabsTrigger value="week">Semana</TabsTrigger>
+            <TabsList className="h-9">
               <TabsTrigger value="day">Dia</TabsTrigger>
+              <TabsTrigger value="week">Semana</TabsTrigger>
+              <TabsTrigger value="month">Mês</TabsTrigger>
+              <TabsTrigger value="doctors-day">Equipe/dia</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
       </div>
 
-      {todayQueue.length > 0 && (
-        <div className="bg-card rounded-xl shadow-card p-4 mb-6 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Fila operacional de hoje</h3>
-              <p className="text-xs text-muted-foreground">Os próximos atendimentos do dia para acompanhamento rápido.</p>
-            </div>
-            <BrandButton
-              size="sm"
-              variant="outline"
-              onClick={() => setQueueExpanded((current) => !current)}
-            >
-              {queueExpanded ? (
-                <>
-                  <ChevronUp className="w-4 h-4" />
-                  Ocultar
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-4 h-4" />
-                  Expandir
-                </>
-              )}
-            </BrandButton>
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="min-w-0" aria-label="Calendário de agendamentos">
+      {appointmentsLoading && (
+        <div className="rounded-xl border bg-card p-4 shadow-sm" aria-label="Carregando agenda">
+          <div className="mb-4 h-10 animate-pulse rounded-lg bg-secondary" />
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: 21 }).map((_, index) => <div key={index} className="h-20 animate-pulse rounded-lg bg-secondary/70" />)}
           </div>
-          {!queueExpanded ? (
-            <div className="rounded-lg border border-dashed bg-background/60 px-4 py-3 text-sm text-muted-foreground">
-              {todayQueue.length} atendimento(s) oculto(s) nesta fila.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {todayQueue.map((appointment) => (
-                <div key={appointment.id} className="rounded-lg border bg-background px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-foreground">{getAppointmentDisplayName(appointment)}</p>
-                      <BrandBadge status={statusConfig[appointment.status]?.badge || 'default'}>
-                        {statusConfig[appointment.status]?.label || appointment.status}
-                      </BrandBadge>
-                      {appointment.appointment_type === 'evaluation' && (
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                          Avaliação
-                        </span>
-                      )}
-                      {appointment.is_batch && (
-                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                          Lote
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {format(getAppointmentStartDate(appointment), "HH:mm", { locale: ptBR })} · {(appointment.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {getProfessionalLabel(appointment.professional_id)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <BrandButton size="sm" variant="outline" onClick={() => setViewAppt(appointment)}>
-                      Ver
-                    </BrandButton>
-                    {appointment.status === 'scheduled' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'confirmed' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Confirmar
-                      </BrandButton>
-                    )}
-                    {appointment.status === 'confirmed' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'in_progress' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Iniciar
-                      </BrandButton>
-                    )}
-                    {appointment.status === 'in_progress' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'completed' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Concluir
-                      </BrandButton>
-                    )}
-                    {appointment.appointment_type === 'evaluation' && appointment.status === 'completed' && (
-                      <BrandButton size="sm" variant="outline" onClick={() => openProposalFromEvaluation(appointment, false)}>
-                        Proposta
-                      </BrandButton>
-                    )}
-                    {(appointment.status === 'confirmed' || appointment.status === 'in_progress' || appointment.status === 'scheduled') && (
-                      <BrandButton size="sm" onClick={() => navigate(`/clinic/sessions?appointmentId=${appointment.id}`)}>
-                        <ClipboardList className="w-4 h-4" />
-                        Sessão
-                      </BrandButton>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
-
-      {/* Professional legend */}
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        {professionals.length > 0 && viewMode !== 'day' && (
-          <div className="flex flex-wrap gap-3">
-            {professionals.map(p => (
-              <span key={p.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="w-3 h-3 rounded-full" style={{ background: p.color }} />
-                {p.label}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.evaluations} avaliações
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.batches} sessões em lote
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.blocks} bloqueios
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.blockedDays} dias com restrição
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {waitlistEntries.length} em lista de espera
-          </span>
+      {appointmentsError && (
+        <div className="rounded-xl border border-destructive/20 bg-card px-6 py-12 text-center shadow-sm">
+          <AlertTriangle className="mx-auto mb-3 h-7 w-7 text-destructive" />
+          <p className="font-medium text-foreground">Não foi possível carregar a agenda.</p>
+          <BrandButton className="mt-4" variant="outline" onClick={() => refetchAppointments()}><RefreshCw className="h-4 w-4" /> Tentar novamente</BrandButton>
         </div>
-      </div>
-
-      {/* Calendar */}
-      {viewMode === 'doctors-day' && (
+      )}
+      {!appointmentsLoading && !appointmentsError && filteredAppointments.length === 0 && (
+        <div className="mb-3 flex flex-col items-center justify-center rounded-xl border border-dashed bg-card/80 px-6 py-5 text-center sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <p className="text-sm font-medium text-foreground">Nenhum agendamento neste período.</p>
+            <p className="text-xs text-muted-foreground">A grade continua disponível para consulta e novos horários.</p>
+          </div>
+          <BrandButton size="sm" className="mt-3 sm:mt-0" onClick={() => { resetForm(); setSelectedDate(format(currentDate, 'yyyy-MM-dd')); setDialogOpen(true); }}><Plus className="h-4 w-4" /> Novo agendamento</BrandButton>
+        </div>
+      )}
+      {!appointmentsLoading && !appointmentsError && viewMode === 'doctors-day' && (
         <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
           {selectedDoctors.length === 0 ? (
             <div className="p-10 text-center">
@@ -1823,14 +1550,14 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {viewMode === 'month' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden animate-fade-in">
-          <div className="grid grid-cols-7">
+      {!appointmentsLoading && !appointmentsError && viewMode === 'month' && (
+        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
+          <div className="grid min-w-[700px] grid-cols-7">
             {dayNames.map(d => (
               <div key={d} className="px-2 py-2 text-xs font-semibold text-muted-foreground text-center border-b bg-secondary/50">{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7">
+          <div className="grid min-w-[700px] grid-cols-7">
             {calendarDays.map((day, i) => {
               const dayAppts = getApptsForDay(day);
               const dayBlocks = getBlocksForDay(day);
@@ -1876,9 +1603,9 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {viewMode === 'week' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden animate-fade-in">
-          <div className="grid grid-cols-7">
+      {!appointmentsLoading && !appointmentsError && viewMode === 'week' && (
+        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
+          <div className="grid min-w-[760px] grid-cols-7">
             {calendarDays.map((day, i) => {
               const dayAppts = getApptsForDay(day);
               const dayBlocks = getBlocksForDay(day);
@@ -1922,7 +1649,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {viewMode === 'day' && (
+      {!appointmentsLoading && !appointmentsError && viewMode === 'day' && (
         <div className="bg-card rounded-xl shadow-card p-4 animate-fade-in">
           {getBlocksForDay(currentDate).length > 0 && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -1948,7 +1675,7 @@ export default function AppointmentsPage() {
                     className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${sc?.style || ''}`}
                     onClick={() => setViewAppt(a)}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-foreground">{getAppointmentDisplayName(a)}</p>
@@ -1990,6 +1717,27 @@ export default function AppointmentsPage() {
           )}
         </div>
       )}
+        </main>
+        <AgendaSidePanel
+          date={currentDate}
+          onDateChange={(date) => { setCurrentDate(date); setViewMode('day'); }}
+          upcoming={todayQueue.slice(0, 3).map((appointment) => ({
+            id: appointment.id,
+            time: format(getAppointmentStartDate(appointment), 'HH:mm'),
+            title: getAppointmentDisplayName(appointment),
+            subtitle: (appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento',
+            meta: getProfessionalLabel(appointment.professional_id),
+          }))}
+          waitlist={waitlistEntries.slice(0, 3).map((entry) => ({
+            id: entry.id,
+            title: entry.patients?.full_name || entry.leads?.full_name || 'Paciente',
+            subtitle: entry.treatments?.name || 'Qualquer atendimento',
+            meta: `Preferência: ${(entry.preferred_periods || []).join(', ') || 'qualquer período'}`,
+          }))}
+          onViewWaitlist={() => setWaitlistDialogOpen(true)}
+          onViewDay={() => { setCurrentDate(new Date()); setViewMode('day'); }}
+        />
+      </div>
 
       {/* Create dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
