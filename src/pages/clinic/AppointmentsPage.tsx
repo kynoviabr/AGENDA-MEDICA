@@ -868,8 +868,33 @@ export default function AppointmentsPage() {
       }
 
       const startTime = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
-      const durationMinutes = parseInt(rescheduleDuration) || 60;
       const nextProfessionalId = rescheduleProfessional === 'unassigned' ? null : rescheduleProfessional;
+      const effectiveProfessionalId = nextProfessionalId || appointment.professional_id;
+      if (!effectiveProfessionalId) throw new Error('Selecione um profissional para remarcar.');
+
+      let durationMinutes = 60;
+      if (appointment.billing_type === 'insurance' && appointment.health_insurance_id) {
+        const { data: insuranceRule, error: insuranceRuleError } = await supabase
+          .from('professional_health_insurances')
+          .select('appointment_duration_minutes')
+          .eq('clinic_id', clinicId)
+          .eq('professional_id', effectiveProfessionalId)
+          .eq('health_insurance_id', appointment.health_insurance_id)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (insuranceRuleError) throw insuranceRuleError;
+        if (!insuranceRule) throw new Error('O convênio não está ativo para o profissional selecionado.');
+        durationMinutes = insuranceRule.appointment_duration_minutes;
+      } else {
+        const { data: privateRule, error: privateRuleError } = await supabase
+          .from('professional_settings')
+          .select('private_appointment_duration_minutes')
+          .eq('clinic_id', clinicId)
+          .eq('professional_id', effectiveProfessionalId)
+          .maybeSingle();
+        if (privateRuleError) throw privateRuleError;
+        durationMinutes = privateRule?.private_appointment_duration_minutes || 60;
+      }
       const mergedNotes = [appointment.notes, rescheduleNotes].filter(Boolean).join('\n\n');
       const { data: newAppointment, error: createError } = await callAgendaRpc<{ id: string }>('reschedule_appointment_secure', {
         p_appointment_id: appointment.id,
@@ -2133,7 +2158,8 @@ export default function AppointmentsPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Duração</Label>
-                        <Input type="number" value={rescheduleDuration} onChange={(event) => setRescheduleDuration(event.target.value)} />
+                        <Input type="number" value={rescheduleDuration} readOnly className="bg-muted/50" />
+                        <p className="text-[11px] text-muted-foreground">Recalculada pela regra ao salvar.</p>
                       </div>
                     </div>
 
