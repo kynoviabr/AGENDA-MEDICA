@@ -17,28 +17,11 @@ import CrmPage from "./pages/clinic/CrmPage";
 import PatientsPage from "./pages/clinic/PatientsPage";
 import PatientDetailPage from "./pages/clinic/PatientDetailPage";
 import TreatmentsPage from "./pages/clinic/TreatmentsPage";
-import ProposalsPage from "./pages/clinic/ProposalsPage";
-import ContractsPage from "./pages/clinic/ContractsPage";
-import PaymentsPage from "./pages/clinic/PaymentsPage";
-import FinanceContractsPage from "./pages/clinic/FinanceContractsPage";
 import AppointmentsPage from "./pages/clinic/AppointmentsPage";
-import SessionsPage from "./pages/clinic/SessionsPage";
-import FeedbackPage from "./pages/clinic/FeedbackPage";
-import EvolutionPage from "./pages/clinic/EvolutionPage";
-import PhotosPage from "./pages/clinic/PhotosPage";
 import ReportsPage from "./pages/clinic/ReportsPage";
 import SettingsPage from "./pages/clinic/SettingsPage";
 import WhatsAppAiPage from "./pages/clinic/WhatsAppAiPage";
-import GoalsTrackingPage from "./pages/clinic/GoalsTrackingPage";
-import NpsPage from "./pages/clinic/NpsPage";
-import SatisfactionPage from "./pages/clinic/SatisfactionPage";
 import PortalHomePage from "./pages/portal/PortalHomePage";
-import PortalContractPage from "./pages/portal/PortalContractPage";
-import PortalPaymentsPage from "./pages/portal/PortalPaymentsPage";
-import PortalSessionsPage from "./pages/portal/PortalSessionsPage";
-import PortalEvolutionPage from "./pages/portal/PortalEvolutionPage";
-import PortalPhotosPage from "./pages/portal/PortalPhotosPage";
-import PortalFeedbackPage from "./pages/portal/PortalFeedbackPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,22 +56,26 @@ const App = () => (
                 <Route path="patients" element={<PatientsPage />} />
                 <Route path="patients/:id" element={<PatientDetailPage />} />
                 <Route path="treatments" element={<TreatmentsPage readOnly />} />
-                <Route path="proposals" element={<ProposalsPage />} />
-                <Route path="contracts" element={<ContractsPage />} />
-                <Route path="payments" element={<PaymentsPage />} />
-                <Route path="finance/contracts" element={<FinanceContractsPage />} />
                 <Route path="appointments" element={<AppointmentsPage />} />
-                <Route path="sessions" element={<SessionsPage />} />
-                <Route path="evolution" element={<EvolutionPage />} />
-                <Route path="photos" element={<PhotosPage />} />
-                <Route path="feedback" element={<FeedbackPage />} />
-                <Route path="nps" element={<NpsPage />} />
-                <Route path="satisfaction" element={<SatisfactionPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
-                <Route path="metas/acompanhamento" element={<GoalsTrackingPage />} />
-                <Route path="metas/minha-meta" element={<GoalsTrackingPage />} />
-                <Route path="metas/equipe" element={<GoalsTrackingPage />} />
+
+                {/*
+                  MVP legado preservado, porém desativado nesta fase do produto.
+                  O wildcard impede acesso direto sem excluir as implementações.
+                  Consulte README.md > "Módulos MVP desativados".
+                */}
+                <Route path="proposals/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="contracts/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="payments/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="finance/contracts/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="metas/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="sessions/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="evolution/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="photos/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="feedback/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="nps/*" element={<Navigate to="/clinic" replace />} />
+                <Route path="satisfaction/*" element={<Navigate to="/clinic" replace />} />
               </Route>
 
               {/* Patient portal */}
@@ -98,12 +85,13 @@ const App = () => (
                 </ProtectedRoute>
               }>
                 <Route index element={<PortalHomePage />} />
-                <Route path="contract" element={<PortalContractPage />} />
-                <Route path="payments" element={<PortalPaymentsPage />} />
-                <Route path="sessions" element={<PortalSessionsPage />} />
-                <Route path="evolution" element={<PortalEvolutionPage />} />
-                <Route path="photos" element={<PortalPhotosPage />} />
-                <Route path="feedback" element={<PortalFeedbackPage />} />
+                {/* Contrato, pagamentos e jornada clínica do portal também permanecem como MVP desativado. */}
+                <Route path="contract/*" element={<Navigate to="/portal" replace />} />
+                <Route path="payments/*" element={<Navigate to="/portal" replace />} />
+                <Route path="sessions/*" element={<Navigate to="/portal" replace />} />
+                <Route path="evolution/*" element={<Navigate to="/portal" replace />} />
+                <Route path="photos/*" element={<Navigate to="/portal" replace />} />
+                <Route path="feedback/*" element={<Navigate to="/portal" replace />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
