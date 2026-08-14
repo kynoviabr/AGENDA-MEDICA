@@ -117,6 +117,7 @@ async function sendWhatsAppText(to: string, body: string, accessToken: string, p
       type: "text",
       text: { preview_url: false, body },
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -187,6 +188,7 @@ async function generateLeadReply(params: {
       max_output_tokens: 220,
       store: false,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -235,10 +237,11 @@ serve(async (req) => {
       return json({ ok: true, ignored: true, reason: "no_text_messages" });
     }
 
-    const admin = createClient(supabaseUrl, serviceRole);
-    const processed: Record<string, unknown>[] = [];
+    const processing = (async () => {
+      const admin = createClient(supabaseUrl, serviceRole);
+      const processed: Record<string, unknown>[] = [];
 
-    for (const inbound of inboundMessages) {
+      for (const inbound of inboundMessages) {
       const { data: connection, error: connectionError } = await admin
         .from("whatsapp_connections")
         .select("clinic_id, phone_number_id, token_ciphertext")
@@ -423,9 +426,18 @@ serve(async (req) => {
         conversationId: conversation.id,
         status: "replied",
       });
-    }
+      }
 
-    return json({ ok: true, processed });
+      console.info("whatsapp_ai_batch_completed", { count: processed.length, processed });
+    })().catch((error) => {
+      console.error("whatsapp_ai_batch_failed", {
+        error: (error as Error).message,
+        messageCount: inboundMessages.length,
+      });
+    });
+
+    EdgeRuntime.waitUntil(processing);
+    return json({ ok: true, accepted: inboundMessages.length });
   } catch (error) {
     return json({ ok: false, error: (error as Error).message }, 500);
   }

@@ -13,6 +13,8 @@ Esta versão mantém ativos os módulos centrais necessários para a operação 
 - Relatórios
 - Configurações
 
+O plano técnico para operar de 100 a 1.000 clínicas está em [`docs/ESCALABILIDADE.md`](docs/ESCALABILIDADE.md).
+
 ## WhatsApp com IA — funcionalidade central
 
 O WhatsApp com IA faz parte do núcleo do produto e **não está entre os módulos MVP desativados**. A arquitetura é multi-clínica:
