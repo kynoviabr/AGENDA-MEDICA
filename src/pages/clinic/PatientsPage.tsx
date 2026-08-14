@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranding } from '@/contexts/BrandingContext';
@@ -16,7 +16,6 @@ import { Plus, Search, MoreHorizontal, Phone, Mail, Edit, Eye } from 'lucide-rea
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import { AnamneseBadge, getAnamneseStatus, type AnamneseStatus } from '@/components/patient/AnamneseSection';
 import PayerSection, { type PayerData } from '@/components/patient/PayerSection';
 import { formatCep, lookupCepAddress } from '@/lib/cep';
 
@@ -44,29 +43,13 @@ const defaultPayerData: PayerData = {
   payer_id: null,
 };
 
-const anamneseStatusLabel: Record<AnamneseStatus, string> = {
-  none: 'Sem anamnese',
-  valid: 'Anamnese válida',
-  expiring: 'Próxima do vencimento',
-  expired: 'Anamnese vencida',
-};
-
-const anamneseStatusHint: Record<AnamneseStatus, string> = {
-  none: 'Cadastrar ficha antes do próximo atendimento.',
-  valid: 'Paciente apto para seguir no fluxo clínico.',
-  expiring: 'Vale renovar em breve para evitar bloqueios operacionais.',
-  expired: 'Priorize atualização antes da próxima sessão.',
-};
-
 export default function PatientsPage() {
   const { clinicId } = useBranding();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [anamneseFilter, setAnamneseFilter] = useState<string>(searchParams.get('anamnese') || 'all');
   const [treatmentFilter, setTreatmentFilter] = useState<string>('all');
   const [contractDateStart, setContractDateStart] = useState('');
   const [contractDateEnd, setContractDateEnd] = useState('');
@@ -109,71 +92,6 @@ export default function PatientsPage() {
     enabled: !!clinicId,
   });
 
-  // Fetch latest anamnese per patient
-  const { data: anamneses = [] } = useQuery({
-    queryKey: ['patient-anamneses-list', clinicId],
-    queryFn: async () => {
-      if (!clinicId) return [];
-      const { data } = await supabase
-        .from('patient_anamneses' as unknown)
-        .select('patient_id, uploaded_at')
-        .eq('clinic_id', clinicId)
-        .order('uploaded_at', { ascending: false });
-      return (data as unknown[]) || [];
-    },
-    enabled: !!clinicId,
-  });
-
-  const { data: validityDays = 45 } = useQuery({
-    queryKey: ['anamnese-validity', clinicId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('clinic_settings' as unknown)
-        .select('value')
-        .eq('clinic_id', clinicId)
-        .eq('key', 'anamnese_validity_days')
-        .maybeSingle();
-      return data ? parseInt((data as unknown).value) || 45 : 45;
-    },
-    enabled: !!clinicId,
-  });
-
-  // Build anamnese map (latest per patient)
-  const anamneseMap: Record<string, string> = {};
-  anamneses.forEach((a: unknown) => {
-    if (!anamneseMap[a.patient_id]) anamneseMap[a.patient_id] = a.uploaded_at;
-  });
-
-  const getPatientAnamneseStatus = (patientId: string): AnamneseStatus => {
-    return getAnamneseStatus(anamneseMap[patientId], validityDays);
-  };
-
-  const formatDate = (value?: string) => {
-    if (!value) return null;
-    return new Intl.DateTimeFormat('pt-BR').format(new Date(value));
-  };
-
-  const getAnamneseSupportingText = (patientId: string) => {
-    const uploadedAt = anamneseMap[patientId];
-    const status = getPatientAnamneseStatus(patientId);
-
-    if (!uploadedAt) {
-      return anamneseStatusHint.none;
-    }
-
-    const uploadedLabel = formatDate(uploadedAt);
-    if (status === 'valid') {
-      return `Última atualização em ${uploadedLabel}.`;
-    }
-
-    if (status === 'expiring') {
-      return `Última atualização em ${uploadedLabel}. Planeje a renovação.`;
-    }
-
-    return `Última atualização em ${uploadedLabel}. Atualização recomendada.`;
-  };
-
-  // Filter patients by anamnese status
   const normalizeDigits = (value?: string | null) => (value || '').replace(/\D/g, '');
   const normalizedSearch = search.trim().toLowerCase();
   const normalizedSearchDigits = normalizeDigits(search);
@@ -203,10 +121,6 @@ export default function PatientsPage() {
       cpf.includes(normalizedSearchDigits);
 
     if (!matchSearch) return false;
-    if (anamneseFilter !== 'all') {
-      const s = getPatientAnamneseStatus(p.id);
-      if (s !== anamneseFilter) return false;
-    }
 
     const contractMeta = patientContractMeta[p.id];
     if (treatmentFilter !== 'all') {
@@ -234,12 +148,6 @@ export default function PatientsPage() {
     acc.push({ id: row.treatment_id, name: row.treatments.name });
     return acc;
   }, []).sort((a, b) => a.name.localeCompare(b.name));
-
-  const anamneseCounts = filteredPatients.reduce<Record<AnamneseStatus, number>>((acc, patient) => {
-    const status = getPatientAnamneseStatus(patient.id);
-    acc[status] += 1;
-    return acc;
-  }, { none: 0, valid: 0, expiring: 0, expired: 0 });
 
   const saveMutation = useMutation({
     mutationFn: async (data: PatientForm) => {
@@ -425,18 +333,6 @@ export default function PatientsPage() {
             <SelectItem value="pending">Pendentes</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={anamneseFilter} onValueChange={setAnamneseFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Anamnese" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas anamneses</SelectItem>
-            <SelectItem value="none">Sem anamnese</SelectItem>
-            <SelectItem value="valid">Válida</SelectItem>
-            <SelectItem value="expiring">Próxima do vencimento</SelectItem>
-            <SelectItem value="expired">Vencida</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={treatmentFilter} onValueChange={setTreatmentFilter}>
           <SelectTrigger className="w-full sm:w-52">
             <SelectValue placeholder="Tratamento" />
@@ -461,36 +357,6 @@ export default function PatientsPage() {
           className="w-full sm:w-44"
         />
       </div>
-
-      {!isLoading && patients.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 mb-6 sm:grid-cols-2 xl:grid-cols-4">
-          {(['none', 'valid', 'expiring', 'expired'] as AnamneseStatus[]).map((status) => (
-            <div
-              key={status}
-              className={`rounded-2xl border p-4 shadow-card ${
-                status === 'expired'
-                  ? 'border-destructive/40 bg-destructive/5'
-                  : status === 'expiring' || status === 'none'
-                    ? 'border-warning/40 bg-warning/10'
-                    : 'bg-card'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {anamneseStatusLabel[status]}
-                  </p>
-                  <p className="text-2xl font-semibold text-foreground">{anamneseCounts[status]}</p>
-                </div>
-                <AnamneseBadge status={status} />
-              </div>
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                {anamneseStatusHint[status]}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Loading */}
       {isLoading && (
@@ -544,18 +410,7 @@ export default function PatientsPage() {
                       {p.email && <p className="text-xs text-muted-foreground">{p.email}</p>}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <BrandBadge status={p.status as BadgeStatus} />
-                    <AnamneseBadge status={getPatientAnamneseStatus(p.id)} />
-                  </div>
-                </div>
-                <div className="rounded-xl border bg-secondary/30 px-3 py-2">
-                  <p className="text-xs font-medium text-foreground">
-                    {anamneseStatusLabel[getPatientAnamneseStatus(p.id)]}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {getAnamneseSupportingText(p.id)}
-                  </p>
+                  <BrandBadge status={p.status as BadgeStatus} />
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground mt-3 pt-3 border-t">
                   {p.phone && (
@@ -575,7 +430,6 @@ export default function PatientsPage() {
                   <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Telefone</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">CPF</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Status</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">Anamnese</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -597,14 +451,6 @@ export default function PatientsPage() {
                     <td className="px-4 py-3 text-sm text-muted-foreground">{p.cpf || '—'}</td>
                     <td className="px-4 py-3">
                       <BrandBadge status={p.status as BadgeStatus} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <AnamneseBadge status={getPatientAnamneseStatus(p.id)} />
-                        <p className="text-xs text-muted-foreground">
-                          {getAnamneseSupportingText(p.id)}
-                        </p>
-                      </div>
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>

@@ -22,7 +22,6 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { useToast } from '@/hooks/use-toast';
 import { Plus, ChevronLeft, ChevronRight, ChevronDown, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin, MoreHorizontal, RefreshCw, Search, CalendarRange } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
-import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek,
   isSameMonth, isSameDay, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
@@ -324,7 +323,7 @@ export default function AppointmentsPage() {
     queryFn: async () => {
       let query = supabase
         .from('patients')
-        .select('id, full_name, current_anamnese_status, current_anamnese_expires_at')
+        .select('id, full_name')
         .eq('clinic_id', clinicId!)
         .order('full_name');
       query = selectedPatientLookupId
@@ -1785,10 +1784,6 @@ export default function AppointmentsPage() {
                     </BrandButton>
                   </div>
                 </div>
-                {selectedPatient && (() => {
-                  const p = getSelectedPatientData(selectedPatient);
-                  return p ? <AnamneseAlertBanner status={p.current_anamnese_status} expiresAt={p.current_anamnese_expires_at} patientId={p.id} patientName={p.full_name} /> : null;
-                })()}
               </>
             ) : (
               <div className="space-y-2">
@@ -1915,10 +1910,6 @@ export default function AppointmentsPage() {
                 <SheetDescription>{(viewAppt.treatments as { name?: string | null } | null)?.name || appointmentTypeLabels[(viewAppt.appointment_type as AppointmentType | 'session') || 'consultation'] || 'Atendimento'}</SheetDescription>
               </SheetHeader>
               <div className="space-y-4 mt-4">
-                {(() => {
-                  const p = getSelectedPatientData(viewAppt.patient_id);
-                  return p ? <AnamneseAlertBanner status={p?.current_anamnese_status} expiresAt={p?.current_anamnese_expires_at} patientId={viewAppt.patient_id} patientName={(viewAppt.patients as { full_name?: string | null; dissatisfaction_flag?: boolean | null; dissatisfaction_level?: string | null; dissatisfaction_reason?: string | null } | null)?.full_name} showActions={false} /> : null;
-                })()}
                 {(viewAppt.patients as { full_name?: string | null; dissatisfaction_flag?: boolean | null; dissatisfaction_level?: string | null; dissatisfaction_reason?: string | null } | null)?.dissatisfaction_flag && (
                   <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive bg-destructive/5">
                     <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />

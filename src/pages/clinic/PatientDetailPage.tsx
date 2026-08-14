@@ -27,7 +27,6 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
-import PatientAnamneseTab from '@/components/anamnese/PatientAnamneseTab';
 import { FileText as FileTextIcon } from 'lucide-react';
 import { ContractStatusBadge } from '@/components/contracts/ContractStatusBadge';
 import PayerSection, { type PayerData } from '@/components/patient/PayerSection';
@@ -45,29 +44,6 @@ import { buildContractPaymentNotes, upsertContractFinancialForecast } from '@/li
 const PATIENT_FILES_BUCKET = 'patient-files';
 const typeLabels: Record<string, string> = { before: 'Antes', during: 'Durante', after: 'Depois', progress: 'Progresso' };
 const typeColors: Record<string, string> = { before: 'bg-blue-100 text-blue-700', during: 'bg-yellow-100 text-yellow-700', after: 'bg-green-100 text-green-700', progress: 'bg-purple-100 text-purple-700' };
-const anamneseBadgeConfig: Record<string, { label: string; cls: string; hint: string }> = {
-  valid: {
-    label: 'Anamnese válida',
-    cls: 'bg-green-100 text-green-700 border-green-200',
-    hint: 'Paciente apto para seguir na agenda e nas sessões.',
-  },
-  expired: {
-    label: 'Anamnese vencida',
-    cls: 'bg-red-100 text-red-700 border-red-200',
-    hint: 'Vale atualizar a ficha antes do próximo atendimento.',
-  },
-  pending: {
-    label: 'Anamnese pendente',
-    cls: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    hint: 'Complete ou revise a ficha para fechar o fluxo clínico.',
-  },
-  none: {
-    label: 'Sem anamnese',
-    cls: 'bg-muted text-muted-foreground border-border',
-    hint: 'Cadastre a primeira anamnese para dar segurança ao atendimento.',
-  },
-};
-
 type PatientEditForm = {
   full_name: string;
   email: string;
@@ -615,8 +591,6 @@ export default function PatientDetailPage() {
   }
 
   const initials = patient.full_name.split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase();
-  const currentAnamneseStatus = patient.current_anamnese_status || 'none';
-  const currentAnamneseConfig = anamneseBadgeConfig[currentAnamneseStatus] || anamneseBadgeConfig.none;
   const upcomingAppointments = [...appointments]
     .filter((appointment: AppointmentRow) => new Date(appointment.start_time).getTime() >= Date.now())
     .sort((a: AppointmentRow, b: AppointmentRow) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -627,11 +601,7 @@ export default function PatientDetailPage() {
   const averageFeedback = feedbacks.length
     ? feedbacks.reduce((sum: number, feedback: FeedbackRow) => sum + Number(feedback.rating || 0), 0) / feedbacks.length
     : null;
-  const operationalStep = currentAnamneseStatus === 'none'
-    ? 'Cadastrar anamnese'
-    : currentAnamneseStatus === 'expired'
-      ? 'Renovar anamnese'
-      : latestContract?.process_status === 'pending_upload'
+  const operationalStep = latestContract?.process_status === 'pending_upload'
         ? 'Receber contrato assinado'
         : latestContract?.process_status === 'pending_confirmation'
           ? 'Validar contrato recebido'
@@ -644,11 +614,7 @@ export default function PatientDetailPage() {
                 : nextAppointment
                   ? 'Acompanhar próximo atendimento'
                   : 'Agendar próxima visita';
-  const operationalHint = currentAnamneseStatus === 'none'
-    ? anamneseBadgeConfig.none.hint
-    : currentAnamneseStatus === 'expired'
-      ? anamneseBadgeConfig.expired.hint
-      : latestContract?.process_status === 'pending_upload'
+  const operationalHint = latestContract?.process_status === 'pending_upload'
         ? 'Depois da avaliação e da proposta, este é o ponto principal para seguir com a venda.'
         : latestContract?.process_status === 'pending_confirmation'
           ? 'Confira o documento recebido para ativar o contrato com segurança.'
@@ -662,7 +628,7 @@ export default function PatientDetailPage() {
                   ? 'A avaliação já aconteceu. O momento agora é transformar esse atendimento em proposta.'
                   : nextAppointment
                     ? 'Há atendimento previsto. Use esse momento para evoluir clínica e comercialmente.'
-                    : 'Agende a próxima avaliação ou sessão para manter o paciente ativo.';
+                    : 'Agende a próxima consulta para manter o paciente ativo.';
   const commercialSummary = latestContract
     ? `${latestContract.contract_number || 'Contrato'}`
     : latestProposal
@@ -674,7 +640,7 @@ export default function PatientDetailPage() {
       ? `Status: ${latestProposal.status} • R$ ${Number(latestProposal.final_amount || 0).toLocaleString('pt-BR')}`
       : 'Depois da avaliação, a proposta passa a aparecer aqui.';
   const openPatientAgenda = () => {
-    navigate(`/clinic/appointments?patientId=${id}&appointmentType=session&openNew=1`);
+    navigate(`/clinic/appointments?patientId=${id}&appointmentType=consultation&openNew=1`);
   };
 
   return (
@@ -723,10 +689,6 @@ export default function PatientDetailPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-xl font-bold text-foreground">{patient.full_name}</h2>
                 <BrandBadge status={patient.status as BadgeStatus} />
-                <Badge variant="outline" className={currentAnamneseConfig.cls}>
-                  <FileTextIcon className="w-3 h-3 mr-1" />
-                  {currentAnamneseConfig.label}
-                </Badge>
                 {latestProposal && (
                   <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                     <FileTextIcon className="w-3 h-3 mr-1" />
@@ -858,7 +820,6 @@ export default function PatientDetailPage() {
       <Tabs defaultValue="data" className="animate-fade-in">
         <TabsList className="w-full flex overflow-x-auto gap-1 mb-6">
           <TabsTrigger value="data" className="flex items-center gap-1"><User className="w-3.5 h-3.5" />Dados</TabsTrigger>
-          <TabsTrigger value="anamnese" className="flex items-center gap-1"><FileTextIcon className="w-3.5 h-3.5" />Anamnese</TabsTrigger>
           <TabsTrigger value="appointments" className="flex items-center gap-1" onClick={openPatientAgenda}><Calendar className="w-3.5 h-3.5" />Agenda</TabsTrigger>
           <TabsTrigger value="proposals" className="flex items-center gap-1"><FileTextIcon className="w-3.5 h-3.5" />Propostas</TabsTrigger>
           <TabsTrigger value="contracts" className="flex items-center gap-1"><FileSignature className="w-3.5 h-3.5" />Contratos</TabsTrigger>
@@ -906,17 +867,6 @@ export default function PatientDetailPage() {
               
             </CardContent>
           </Card>
-        </TabsContent>
-
-        {/* Anamnese tab */}
-        <TabsContent value="anamnese">
-          {clinicId && id && (
-            <PatientAnamneseTab
-              patientId={id}
-              clinicId={clinicId}
-              patientAnamneseStatus={patient.current_anamnese_status}
-            />
-          )}
         </TabsContent>
 
         {/* Appointments tab */}

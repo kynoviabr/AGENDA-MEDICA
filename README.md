@@ -97,11 +97,13 @@ O repositório contém código de um MVP anterior para os módulos abaixo, mas e
 - Feedback
 - NPS
 - Satisfação
+- Anamnese
 
 ### O que significa “desativado”
 
 - Os módulos não aparecem na navegação da clínica.
 - As abas de Configurações relacionadas a Metas, Custos, Anamnese e Parâmetros/Alertas desses módulos também ficam ocultas.
+- O fluxo de Anamnese também foi removido da Agenda, da listagem de pacientes e do detalhe do paciente; seu código e suas tabelas permanecem apenas como legado desativado.
 - As permissões dos módulos desativados não são oferecidas na gestão de grupos de acesso.
 - Os recursos equivalentes de Contratos, Pagamentos, Sessões, Evolução, Fotos e Feedback também não aparecem no portal do paciente.
 - Tentativas de abrir diretamente as rotas desses módulos são redirecionadas para o início da área correspondente.
