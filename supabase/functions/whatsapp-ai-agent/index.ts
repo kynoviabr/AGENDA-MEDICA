@@ -12,6 +12,7 @@ type InboundMessage = {
   text: string;
   contactName: string | null;
   raw: Record<string, unknown>;
+  phoneNumberId: string;
 };
 
 function normalizePhone(phone: string) {
@@ -35,11 +36,12 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
       const value = change?.value || {};
       const contacts = Array.isArray(value.contacts) ? value.contacts : [];
       const rawMessages = Array.isArray(value.messages) ? value.messages : [];
+      const phoneNumberId = String(value?.metadata?.phone_number_id || "");
 
       for (const rawMessage of rawMessages) {
         const text = String(rawMessage?.text?.body || "").trim();
         const from = normalizePhone(String(rawMessage?.from || ""));
-        if (!text || !from) continue;
+        if (!text || !from || !phoneNumberId) continue;
 
         const contact = contacts.find((item: Record<string, unknown>) => {
           return normalizePhone(String(item?.wa_id || "")) === from;
@@ -51,6 +53,7 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
           text,
           contactName: contact?.profile?.name ? String(contact.profile.name).trim() : null,
           raw: rawMessage,
+          phoneNumberId,
         });
       }
     }
@@ -61,7 +64,7 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
 
 async function verifyMetaSignature(req: Request, rawBody: string) {
   const appSecret = Deno.env.get("META_APP_SECRET");
-  if (!appSecret) return true;
+  if (!appSecret) return false;
 
   const signature = req.headers.get("x-hub-signature-256") || "";
   const expectedPrefix = "sha256=";
@@ -80,14 +83,29 @@ async function verifyMetaSignature(req: Request, rawBody: string) {
   return signature.slice(expectedPrefix.length) === hash;
 }
 
-async function sendWhatsAppText(to: string, body: string) {
-  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  if (!accessToken || !phoneNumberId) {
-    throw new Error("WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured");
-  }
+function fromBase64(value: string) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
 
-  const response = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+async function decryptToken(payload: string) {
+  const secret = Deno.env.get("WHATSAPP_TOKEN_ENCRYPTION_KEY");
+  if (!secret || secret.length < 32) throw new Error("platform_encryption_key_not_configured");
+  const [version, ivValue, encryptedValue] = payload.split(".");
+  if (version !== "v1" || !ivValue || !encryptedValue) throw new Error("invalid_connection_token");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  const key = await crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["decrypt"]);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64(ivValue) },
+    key,
+    fromBase64(encryptedValue),
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+async function sendWhatsAppText(to: string, body: string, accessToken: string, phoneNumberId: string) {
+
+  const graphVersion = Deno.env.get("META_GRAPH_API_VERSION") || "v23.0";
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -204,9 +222,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const clinicId = Deno.env.get("WHATSAPP_AI_DEFAULT_CLINIC_ID");
     if (!supabaseUrl || !serviceRole) throw new Error("SUPABASE env vars not configured");
-    if (!clinicId) throw new Error("WHATSAPP_AI_DEFAULT_CLINIC_ID not configured");
 
     const rawBody = await req.text();
     if (!(await verifyMetaSignature(req, rawBody))) {
@@ -222,29 +238,28 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceRole);
     const processed: Record<string, unknown>[] = [];
 
-    const { data: clinic, error: clinicError } = await admin
-      .from("clinics")
-      .select("id, name")
-      .eq("id", clinicId)
-      .maybeSingle();
-    if (clinicError) throw clinicError;
-    if (!clinic) throw new Error("clinic_not_found");
-
-    const { data: settings } = await admin
-      .from("whatsapp_ai_settings")
-      .select("is_enabled, openai_model, default_goal, handoff_message")
-      .eq("clinic_id", clinicId)
-      .maybeSingle();
-
-    const { data: treatments } = await admin
-      .from("treatments")
-      .select("name")
-      .eq("clinic_id", clinicId)
-      .eq("is_active", true)
-      .order("name")
-      .limit(20);
-
     for (const inbound of inboundMessages) {
+      const { data: connection, error: connectionError } = await admin
+        .from("whatsapp_connections")
+        .select("clinic_id, phone_number_id, token_ciphertext")
+        .eq("phone_number_id", inbound.phoneNumberId)
+        .eq("status", "connected")
+        .maybeSingle();
+      if (connectionError) throw connectionError;
+      if (!connection) {
+        processed.push({ messageId: inbound.messageId, status: "unknown_phone_number" });
+        continue;
+      }
+      const clinicId = connection.clinic_id;
+      const accessToken = await decryptToken(connection.token_ciphertext);
+      const [{ data: clinic, error: clinicError }, { data: settings }, { data: treatments }] = await Promise.all([
+        admin.from("clinics").select("id, name").eq("id", clinicId).maybeSingle(),
+        admin.from("whatsapp_ai_settings").select("is_enabled, openai_model, default_goal, handoff_message").eq("clinic_id", clinicId).maybeSingle(),
+        admin.from("treatments").select("name").eq("clinic_id", clinicId).eq("is_active", true).order("name").limit(20),
+      ]);
+      if (clinicError) throw clinicError;
+      if (!clinic) throw new Error("clinic_not_found");
+
       if (inbound.messageId) {
         const { data: existing } = await admin
           .from("whatsapp_ai_messages")
@@ -367,7 +382,7 @@ serve(async (req) => {
         handoffMessage: settings?.handoff_message,
       });
 
-      const whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text);
+      const whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
       const outboundMessageId = whatsappResponse?.messages?.[0]?.id ? String(whatsappResponse.messages[0].id) : null;
       const usage = aiReply.usage as Record<string, number | undefined>;
 

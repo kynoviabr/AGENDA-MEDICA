@@ -13,6 +13,46 @@ Esta versão mantém ativos os módulos centrais necessários para a operação 
 - Relatórios
 - Configurações
 
+## WhatsApp com IA — funcionalidade central
+
+O WhatsApp com IA faz parte do núcleo do produto e **não está entre os módulos MVP desativados**. A arquitetura é multi-clínica:
+
+- A Kynovia configura uma única vez o aplicativo Meta, webhook, App Secret, token de verificação e chave OpenAI.
+- O administrador de cada clínica clica em **Conectar WhatsApp**, entra na Meta e escolhe o próprio número pelo Embedded Signup.
+- O webhook identifica automaticamente a clínica pelo `phone_number_id` recebido da Meta.
+- Cada token de acesso é criptografado no servidor com AES-GCM e nunca é enviado ao navegador.
+- Objetivo da IA e mensagem de transferência para atendimento humano continuam configuráveis por clínica.
+
+### Configuração da plataforma
+
+Variáveis públicas do frontend (ambiente de build):
+
+```env
+VITE_META_APP_ID=
+VITE_META_CONFIG_ID=
+```
+
+Secrets das Supabase Edge Functions, administrados somente pela Kynovia:
+
+```env
+META_APP_ID=
+META_APP_SECRET=
+META_CONFIG_ID=
+META_GRAPH_API_VERSION=v23.0
+WHATSAPP_WEBHOOK_TOKEN=
+WHATSAPP_TOKEN_ENCRYPTION_KEY=
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.6-luna
+```
+
+`WHATSAPP_TOKEN_ENCRYPTION_KEY` deve ser uma chave aleatória forte com pelo menos 32 caracteres. Não use chaves da Meta ou do Supabase como chave de criptografia. O callback único da plataforma é:
+
+```text
+https://<project-ref>.supabase.co/functions/v1/whatsapp-ai-agent
+```
+
+Não configure `WHATSAPP_AI_DEFAULT_CLINIC_ID`, `WHATSAPP_ACCESS_TOKEN` ou `WHATSAPP_PHONE_NUMBER_ID`: essas variáveis pertenciam ao protótipo de uma única clínica e foram substituídas pelo roteamento multi-clínica.
+
 ## Módulos MVP desativados
 
 O repositório contém código de um MVP anterior para os módulos abaixo, mas eles estão **deliberadamente desativados no produto atual**:
