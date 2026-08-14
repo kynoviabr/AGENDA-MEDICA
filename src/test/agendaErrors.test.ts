@@ -15,4 +15,12 @@ describe('agenda transactional error contract', () => {
   it('preserves an unknown backend message', () => {
     expect(getAgendaErrorMessage(new Error('Falha específica'))).toBe('Falha específica');
   });
+
+  it('extracts useful fields from a Supabase/PostgREST error object', () => {
+    expect(getAgendaErrorMessage({
+      message: 'Could not choose the best candidate function',
+      details: 'Multiple functions match the request',
+      code: 'PGRST203',
+    })).toBe('Could not choose the best candidate function · Multiple functions match the request · PGRST203');
+  });
 });

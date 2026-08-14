@@ -45,6 +45,11 @@ const professionalColors = [
   'hsl(190 70% 40%)', 'hsl(60 70% 40%)',
 ];
 
+const timeToMinutes = (value: string) => {
+  const [hours = 0, minutes = 0] = value.slice(0, 5).split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
 const statusConfig: Record<string, { label: string; badge: BadgeStatus; style: string }> = {
   scheduled: { label: 'Agendado', badge: 'scheduled', style: 'border-l-4 border-l-info' },
   confirmed: { label: 'Confirmado', badge: 'confirmed', style: 'border-l-4 border-l-success' },
@@ -661,6 +666,27 @@ export default function AppointmentsPage() {
     setDialogOpen(true);
   };
 
+  const isWithinProfessionalAvailability = useCallback((
+    day: Date,
+    time: string,
+    professionalId: string | null,
+    durationMinutes = 30,
+  ) => {
+    if (!professionalId) return true;
+    const startMinutes = timeToMinutes(time);
+    const endMinutes = startMinutes + durationMinutes;
+    return availability.some((slot) =>
+      slot.professional_id === professionalId &&
+      slot.day_of_week === day.getDay() &&
+      timeToMinutes(slot.start_time) <= startMinutes &&
+      timeToMinutes(slot.end_time) >= endMinutes
+    );
+  }, [availability]);
+
+  const visibleProfessionalId = filterProfessional !== 'all' && filterProfessional !== 'unassigned'
+    ? filterProfessional
+    : null;
+
   const selectSearchResult = (appointment: AppointmentRow) => {
     setCurrentDate(getAppointmentStartDate(appointment));
     setViewMode('day');
@@ -702,6 +728,9 @@ export default function AppointmentsPage() {
       const profId = selectedProfessional || (isProfessional ? currentProfessionalId : null);
       if (!profId) {
         throw new Error('Selecione um profissional para este agendamento.');
+      }
+      if (!isWithinProfessionalAvailability(startTime, selectedTime, profId, parseInt(duration) || 30)) {
+        throw new Error('Horário fora da disponibilidade do profissional. Escolha um dos horários disponíveis na grade.');
       }
       if (billingType === 'insurance') {
         if (!selectedHealthInsurance) throw new Error('Selecione o convênio da consulta.');
@@ -757,12 +786,12 @@ export default function AppointmentsPage() {
       setCreateFormError('');
       toast({ title: 'Agendamento criado!' });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       const msg = getAgendaErrorMessage(err) || 'Erro ao criar agendamento.';
       if (
-        msg.includes('Já existe outro agendamento para esse horário.') ||
-        msg.includes('Existe um bloqueio para esse horário.') ||
-        msg.includes('fora da disponibilidade semanal do profissional')
+        msg.toLocaleLowerCase('pt-BR').includes('horário') ||
+        msg.toLocaleLowerCase('pt-BR').includes('bloqueio') ||
+        msg.toLocaleLowerCase('pt-BR').includes('disponibilidade')
       ) {
         setCreateFormError(msg);
         return;
@@ -1645,11 +1674,12 @@ export default function AppointmentsPage() {
               ...calendarDays.map((day) => {
                 const slotAppointments = getApptsForDay(day).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
                 const isCurrentDay = isSameDay(day, now);
+                const isAvailable = isWithinProfessionalAvailability(day, slot, visibleProfessionalId);
                 return (
-                  <div key={`${day.toISOString()}-${slot}`} className="group relative h-12 border-b border-r border-dashed px-1 py-0.5">
+                  <div key={`${day.toISOString()}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
                     {showCurrentTime && isCurrentDay && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />}
                     {slotAppointments.length === 0 ? (
-                      <button type="button" className="h-full w-full rounded text-[10px] text-transparent transition-colors hover:bg-primary/5 hover:text-primary focus-visible:bg-primary/5 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(day, slot)} aria-label={`Agendar em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
+                      <button type="button" disabled={!isAvailable} className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(day, slot)} aria-label={isAvailable ? `Agendar em ${format(day, 'dd/MM')} às ${slot}` : `Indisponível em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
                     ) : slotAppointments.map((appointment) => (
                       <button key={appointment.id} type="button" className={`w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
                         <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
@@ -1692,12 +1722,13 @@ export default function AppointmentsPage() {
           <div className="divide-y">
             {halfHourSlots.map((slot, slotIndex) => {
               const slotAppointments = getApptsForDay(currentDate).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+              const isAvailable = isWithinProfessionalAvailability(currentDate, slot, visibleProfessionalId);
               return (
-                <div key={slot} className="group relative grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1">
+                <div key={slot} className={`group relative grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1 ${!isAvailable ? 'bg-muted/30' : ''}`}>
                   {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute left-[68px] right-0 z-20 border-t border-primary/70" style={{ top: currentTimeDayOffset }}><span className="absolute -left-[52px] -top-2 text-[10px] font-medium text-primary">{format(now, 'HH:mm')}</span></div>}
                   <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
                   {slotAppointments.length === 0 ? (
-                    <button type="button" className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition hover:border-dashed hover:border-primary/30 hover:bg-primary/5 hover:px-3 hover:text-primary focus-visible:border-primary/30 focus-visible:bg-primary/5 focus-visible:px-3 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(currentDate, slot)}>+ Agendar</button>
+                    <button type="button" disabled={!isAvailable} className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition enabled:hover:border-dashed enabled:hover:border-primary/30 enabled:hover:bg-primary/5 enabled:hover:px-3 enabled:hover:text-primary enabled:focus-visible:border-primary/30 enabled:focus-visible:bg-primary/5 enabled:focus-visible:px-3 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-2 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(currentDate, slot)} aria-label={isAvailable ? `Agendar às ${slot}` : `Indisponível às ${slot}`}>+ Agendar</button>
                   ) : (
                     <div className="space-y-1">
                       {slotAppointments.map((appointment) => {
