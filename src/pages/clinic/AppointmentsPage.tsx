@@ -180,6 +180,7 @@ export default function AppointmentsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const sessionPreferences = useMemo(loadAgendaPreferences, []);
+  const [clockNow, setClockNow] = useState(() => new Date());
   const [currentDate, setCurrentDate] = useState(() => sessionPreferences.currentDate ? new Date(sessionPreferences.currentDate) : new Date());
   const [viewMode, setViewMode] = useState<ViewMode>(sessionPreferences.viewMode || 'week');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -256,6 +257,10 @@ export default function AppointmentsPage() {
     },
     enabled: !!clinicId,
   });
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (locations.length && !locations.some((location) => location.id === selectedLocationId)) {
       setSelectedLocationId(locations.find(location => location.is_primary)?.id || locations[0].id);
@@ -1379,6 +1384,14 @@ export default function AppointmentsPage() {
     : viewMode === 'week'
     ? `${format(rangeStart, 'd', { locale: ptBR })} – ${format(rangeEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
     : format(currentDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const now = clockNow;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const agendaStartMinutes = 8 * 60;
+  const agendaEndMinutes = agendaStartMinutes + halfHourSlots.length * 30;
+  const showCurrentTime = currentMinutes >= agendaStartMinutes && currentMinutes < agendaEndMinutes;
+  const currentTimeSlotIndex = Math.floor((currentMinutes - agendaStartMinutes) / 30);
+  const currentTimeOffset = ((currentMinutes % 30) / 30) * 48;
+  const currentTimeDayOffset = ((currentMinutes % 30) / 30) * 58;
 
   return (
     <div>
@@ -1395,9 +1408,9 @@ export default function AppointmentsPage() {
         </BrandButton>
       </PageHeader>
 
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
         <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-          <SelectTrigger className="h-10 w-[220px] border-0 bg-secondary/60 shadow-none" aria-label="Selecionar unidade"><MapPin className="mr-2 h-4 w-4"/><span className="mr-1 text-xs text-muted-foreground">Unidade:</span><SelectValue placeholder="Selecionar" /></SelectTrigger>
+          <SelectTrigger className="h-10 w-[220px] border-0 bg-secondary/60 shadow-none" aria-label="Selecionar unidade"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
           <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
         </Select>
         <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setAvailabilityDialogOpen(true)}>
@@ -1428,7 +1441,7 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
         <AgendaStatCard value={operationalSummary.totalInView} label="Agendamentos no período" icon={CalendarCheck2} />
         <AgendaStatCard value={operationalSummary.today} label="Atendimentos hoje" icon={Clock3} />
         <AgendaStatCard value={operationalSummary.confirmedToday} label="Confirmados hoje" icon={CheckCircle2} tone="success" />
@@ -1438,12 +1451,19 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Controls */}
-      <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+      <div className="mb-3 flex flex-col gap-2 rounded-xl border bg-card p-2.5 shadow-sm xl:flex-row xl:items-center">
+        <div className="flex min-w-0 shrink-0 items-center gap-1">
+          <button aria-label="Período anterior" onClick={() => navigate_(-1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronLeft className="h-5 w-5" /></button>
+          <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
+          <BrandButton size="sm" variant="outline" className="ml-1 h-9" onClick={() => setCurrentDate(new Date())}>Hoje</BrandButton>
+          <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+          <h2 className="min-w-0 whitespace-nowrap text-sm font-semibold capitalize text-foreground sm:text-base xl:min-w-[245px]">{headerLabel}</h2>
+        </div>
         <Popover open={searchOpen && agendaSearch.trim().length >= 2} onOpenChange={setSearchOpen}>
           <PopoverTrigger asChild>
-            <div className="relative w-full xl:w-[270px]">
+            <div className="relative w-full shrink-0 md:w-[280px] xl:ml-auto">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input value={agendaSearch} onFocus={() => setSearchOpen(true)} onChange={(event) => { setAgendaSearch(event.target.value); setSearchOpen(true); }} className="h-9 pl-9" placeholder="Buscar paciente ou agendamento..." aria-label="Buscar paciente ou agendamento" />
+              <Input value={agendaSearch} onFocus={() => setSearchOpen(true)} onChange={(event) => { setAgendaSearch(event.target.value); setSearchOpen(true); }} className="h-9 pl-9" placeholder="Buscar paciente ou agendamento" aria-label="Buscar paciente ou agendamento" />
             </div>
           </PopoverTrigger>
           <PopoverContent className="w-[360px] max-w-[calc(100vw-2rem)] p-1" align="start" onOpenAutoFocus={(event) => event.preventDefault()}>
@@ -1460,14 +1480,7 @@ export default function AppointmentsPage() {
             )}
           </PopoverContent>
         </Popover>
-        <div className="flex items-center gap-1">
-          <button aria-label="Período anterior" onClick={() => navigate_(-1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronLeft className="h-5 w-5" /></button>
-          <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
-          <h2 className="ml-2 min-w-0 text-base font-semibold capitalize text-foreground sm:min-w-[210px] sm:text-lg">{headerLabel}</h2>
-          <BrandButton size="sm" variant="outline" className="ml-1 h-9" onClick={() => setCurrentDate(new Date())}>Hoje</BrandButton>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
           {viewMode === 'doctors-day' ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1558,14 +1571,6 @@ export default function AppointmentsPage() {
           <AlertTriangle className="mx-auto mb-3 h-7 w-7 text-destructive" />
           <p className="font-medium text-foreground">Não foi possível carregar a agenda.</p>
           <BrandButton className="mt-4" variant="outline" onClick={() => refetchAppointments()}><RefreshCw className="h-4 w-4" /> Tentar novamente</BrandButton>
-        </div>
-      )}
-      {!appointmentsLoading && !appointmentsError && filteredAppointments.length === 0 && (
-        <div className="mb-2 rounded-lg border border-dashed bg-card/70 px-4 py-2.5 text-center">
-          <div>
-            <p className="text-sm font-medium text-foreground">Nenhum agendamento neste período.</p>
-            <p className="text-xs text-muted-foreground">A grade continua disponível para consulta e novos horários.</p>
-          </div>
         </div>
       )}
       {!appointmentsLoading && !appointmentsError && viewMode === 'doctors-day' && (
@@ -1700,59 +1705,55 @@ export default function AppointmentsPage() {
       )}
 
       {!appointmentsLoading && !appointmentsError && viewMode === 'week' && (
-        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
-          <div className="grid min-w-[760px] grid-cols-7">
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-auto rounded-xl bg-card shadow-card animate-fade-in">
+          <div className="grid min-w-[820px] grid-cols-[64px_repeat(7,minmax(108px,1fr))]">
+            <div className="sticky left-0 top-0 z-30 border-b border-r bg-card" />
             {calendarDays.map((day, i) => {
-              const dayAppts = getApptsForDay(day);
+              const isToday = isSameDay(day, now);
+              return <div key={day.toISOString()} className={`sticky top-0 z-20 border-b border-r px-2 py-2 text-center ${isToday ? 'bg-primary/10' : 'bg-secondary/95'}`}><span className="text-xs text-muted-foreground">{dayNames[i]}</span> <span className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</span></div>;
+            })}
+            <div className="sticky left-0 z-10 border-b border-r bg-card" />
+            {calendarDays.map((day) => {
               const dayBlocks = getBlocksForDay(day);
-              const isToday = isSameDay(day, new Date());
-              return (
-                <div key={i} className="border-r min-h-[300px]">
-                  <div className={`px-2 py-2 text-center border-b ${isToday ? 'bg-primary/10' : 'bg-secondary/50'}`}>
-                    <div className="text-xs text-muted-foreground">{dayNames[i]}</div>
-                    <div className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</div>
-                  </div>
-                  <div className="border-b p-1">
-                    {dayBlocks.length > 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        <Lock className="mr-1 inline h-3 w-3" /> {dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    {halfHourSlots.map((slot) => {
-                      const slotAppointments = dayAppts.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
-                      return (
-                        <div key={slot} className="group relative min-h-[48px] border-b border-dashed px-1 py-0.5">
-                          <span className="absolute left-1 top-1 text-[9px] text-muted-foreground/70">{slot}</span>
-                          {slotAppointments.length === 0 ? (
-                            <button type="button" className="h-full min-h-[43px] w-full rounded text-[10px] text-transparent transition-colors hover:bg-primary/5 hover:text-primary focus-visible:bg-primary/5 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(day, slot)} aria-label={`Agendar em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
-                          ) : slotAppointments.map((appointment) => (
-                            <button key={appointment.id} type="button" className={`mt-3 w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
-                              <span className="block font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')}</span>
-                              <span className="block truncate font-medium">{getAppointmentDisplayName(appointment)}</span>
-                              <span className="block truncate text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {statusConfig[appointment.status]?.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })}
-                    {dayAppts.filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
-                      <button key={appointment.id} type="button" className="m-1 w-[calc(100%-0.5rem)] rounded-md border bg-background p-2 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
-                        <span className="block font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
-                        <span className="text-muted-foreground">Fora da grade operacional</span>
+              return <div key={`blocks-${day.toISOString()}`} className="min-h-8 border-b border-r p-1">{dayBlocks.length > 0 && <div className="truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] text-amber-700"><Lock className="mr-1 inline h-3 w-3" />{dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''}</div>}</div>;
+            })}
+            {halfHourSlots.flatMap((slot, slotIndex) => [
+              <div key={`time-${slot}`} className="sticky left-0 z-10 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">{slot}</div>,
+              ...calendarDays.map((day) => {
+                const slotAppointments = getApptsForDay(day).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                const isCurrentDay = isSameDay(day, now);
+                return (
+                  <div key={`${day.toISOString()}-${slot}`} className="group relative h-12 border-b border-r border-dashed px-1 py-0.5">
+                    {showCurrentTime && isCurrentDay && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />}
+                    {slotAppointments.length === 0 ? (
+                      <button type="button" className="h-full w-full rounded text-[10px] text-transparent transition-colors hover:bg-primary/5 hover:text-primary focus-visible:bg-primary/5 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(day, slot)} aria-label={`Agendar em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
+                    ) : slotAppointments.map((appointment) => (
+                      <button key={appointment.id} type="button" className={`w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
+                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="block truncate text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'}</span>
                       </button>
                     ))}
                   </div>
-                </div>
-              );
-            })}
+                );
+              }),
+            ])}
+            <div className="sticky left-0 z-10 border-r bg-card px-1 py-2 text-right text-[9px] text-muted-foreground">Extras</div>
+            {calendarDays.map((day) => (
+              <div key={`extras-${day.toISOString()}`} className="min-h-9 border-r p-1">
+                {getApptsForDay(day).filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
+                  <button key={appointment.id} type="button" className="w-full rounded-md border bg-background p-1.5 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                    <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                    <span className="text-muted-foreground">Fora da grade operacional</span>
+                  </button>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {!appointmentsLoading && !appointmentsError && viewMode === 'day' && (
-        <div className="bg-card rounded-xl shadow-card p-4 animate-fade-in">
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-y-auto rounded-xl bg-card p-3 shadow-card animate-fade-in">
           {getBlocksForDay(currentDate).length > 0 && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-800">Dia com bloqueios operacionais</p>
@@ -1766,10 +1767,11 @@ export default function AppointmentsPage() {
             </div>
           )}
           <div className="divide-y">
-            {halfHourSlots.map((slot) => {
+            {halfHourSlots.map((slot, slotIndex) => {
               const slotAppointments = getApptsForDay(currentDate).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
               return (
-                <div key={slot} className="group grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1">
+                <div key={slot} className="group relative grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1">
+                  {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute left-[68px] right-0 z-20 border-t border-primary/70" style={{ top: currentTimeDayOffset }}><span className="absolute -left-[52px] -top-2 text-[10px] font-medium text-primary">{format(now, 'HH:mm')}</span></div>}
                   <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
                   {slotAppointments.length === 0 ? (
                     <button type="button" className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition hover:border-dashed hover:border-primary/30 hover:bg-primary/5 hover:px-3 hover:text-primary focus-visible:border-primary/30 focus-visible:bg-primary/5 focus-visible:px-3 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(currentDate, slot)}>+ Agendar</button>
