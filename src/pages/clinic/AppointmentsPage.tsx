@@ -637,7 +637,11 @@ export default function AppointmentsPage() {
     } else if (filterProfessional !== 'all') {
       filtered = filtered.filter((a) => a.professional_id === filterProfessional);
     }
-    if (filterStatus !== 'all') {
+    if (filterStatus === 'all') {
+      // A remarcação preserva o registro anterior para auditoria, mas ele não
+      // representa mais um horário ocupado e não deve aparecer na agenda ativa.
+      filtered = filtered.filter((appointment) => appointment.status !== 'rescheduled');
+    } else {
       filtered = filtered.filter((a) => a.status === filterStatus);
     }
     return filtered;
