@@ -13,6 +13,7 @@ export interface Professional {
   cpf: string | null;
   email: string | null;
   phone: string | null;
+  additional_phones: string[];
   registration_number: string | null;
   specialty: string | null;
   status: string;

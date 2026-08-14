@@ -1185,6 +1185,7 @@ export type Database = {
       }
       professionals: {
         Row: {
+          additional_phones: string[]
           class_entity_id: string | null
           clinic_id: string
           cpf: string | null
@@ -1201,6 +1202,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          additional_phones?: string[]
           class_entity_id?: string | null
           clinic_id: string
           cpf?: string | null
@@ -1217,6 +1219,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          additional_phones?: string[]
           class_entity_id?: string | null
           clinic_id?: string
           cpf?: string | null

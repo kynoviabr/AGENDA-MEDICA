@@ -64,6 +64,7 @@ export default function ProfessionalsTab() {
     registration_number: '', user_id: '', role_id: '', class_entity_id: '',
   });
   const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+  const [additionalPhones, setAdditionalPhones] = useState<string[]>([]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -109,6 +110,7 @@ export default function ProfessionalsTab() {
     const result = await create({
       full_name: form.full_name, cpf: cpfDigits || null, email: form.email || null,
       phone: form.phone || null, specialty: form.specialty || null,
+      additional_phones: Array.from(new Set(additionalPhones.map(phone => phone.trim()).filter(phone => phone && phone !== form.phone.trim()))),
       registration_number: form.registration_number || null, user_id: form.user_id,
       role_id: form.role_id, class_entity_id: form.class_entity_id, status: 'active',
     });
@@ -116,7 +118,7 @@ export default function ProfessionalsTab() {
       for (const tid of selectedTreatments) await linkTreatment(result.id, tid);
       setOpen(false);
       setForm({ full_name: '', cpf: '', email: '', phone: '', specialty: '', registration_number: '', user_id: '', role_id: '', class_entity_id: '' });
-      setSelectedTreatments([]); setCpfError('');
+      setSelectedTreatments([]); setAdditionalPhones([]); setCpfError('');
     }
     setSaving(false);
   };
@@ -287,10 +289,33 @@ export default function ProfessionalsTab() {
                         <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Telefone</Label>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>Telefone principal</Label>
+                          <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs" onClick={() => setAdditionalPhones(phones => phones.length < 10 ? [...phones, ''] : phones)} disabled={additionalPhones.length >= 10}>
+                            <Plus className="h-3 w-3" />Adicionar telefone
+                          </Button>
+                        </div>
                         <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(00) 00000-0000" />
                       </div>
                     </div>
+                    {additionalPhones.length > 0 && (
+                      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Telefones adicionais</p>
+                        {additionalPhones.map((phone, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <Input
+                              value={phone}
+                              onChange={event => setAdditionalPhones(phones => phones.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                              placeholder="(00) 00000-0000"
+                              aria-label={`Telefone adicional ${index + 1}`}
+                            />
+                            <Button type="button" variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setAdditionalPhones(phones => phones.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover telefone adicional ${index + 1}`}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Dados Profissionais</p>
@@ -447,6 +472,7 @@ export default function ProfessionalsTab() {
                             {p.specialty && <span>• {p.specialty}</span>}
                             {p.cpf && <span className="font-mono">• CPF: {formatCPF(p.cpf)}</span>}
                             {p.phone && <span>• {p.phone}</span>}
+                            {p.additional_phones?.map((phone, index) => <span key={`${p.id}-phone-${index}`}>• {phone}</span>)}
                           </div>
                           {treatmentNames.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
