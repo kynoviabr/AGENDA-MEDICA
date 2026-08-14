@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, Plus, Search, ShieldCheck, Users } from 'lucide-react';
+import { Edit, Plus, Search, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { PageHeader } from '@/components/ui/page-header';
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 
 interface InsuranceForm {
@@ -147,22 +148,40 @@ export default function HealthInsurancesPage() {
       ) : filtered.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center py-12 text-center"><ShieldCheck className="mb-3 h-10 w-10 text-muted-foreground" /><p className="font-medium">Nenhum convênio cadastrado</p><p className="mt-1 text-sm text-muted-foreground">Cadastre o primeiro plano aceito pela clínica.</p></CardContent></Card>
       ) : (
-        <div className="grid gap-3">
-          {filtered.map(insurance => {
-            const linkedIds = insurance.professional_health_insurances.filter(link => link.status === 'active').map(link => link.professional_id);
-            const linkedNames = professionals.filter(professional => linkedIds.includes(professional.id)).map(professional => professional.full_name);
-            return (
-              <Card key={insurance.id}>
-                <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">{insurance.name}</h2><Badge variant={insurance.status === 'active' ? 'default' : 'secondary'}>{insurance.status === 'active' ? 'Ativo' : 'Inativo'}</Badge>{insurance.ans_code && <Badge variant="outline">ANS {insurance.ans_code}</Badge>}</div>
-                    <div className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><Users className="mt-0.5 h-4 w-4 shrink-0" /><span>{linkedNames.length ? linkedNames.join(', ') : 'Nenhum profissional vinculado'}</span></div>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => startEdit(insurance)}><Edit className="mr-2 h-4 w-4" />Editar</Button>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+          <Table className="min-w-[760px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[24%]">Convênio</TableHead>
+                <TableHead className="w-[13%]">Registro ANS</TableHead>
+                <TableHead className="w-[22%]">Contato</TableHead>
+                <TableHead>Profissionais</TableHead>
+                <TableHead className="w-[10%]">Status</TableHead>
+                <TableHead className="w-14 text-right">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map(insurance => {
+                const linkedIdSet = new Set(insurance.professional_health_insurances.filter(link => link.status === 'active').map(link => link.professional_id));
+                const linkedNames = professionals.filter(professional => linkedIdSet.has(professional.id)).map(professional => professional.full_name);
+                const contact = insurance.phone || insurance.email;
+                return (
+                  <TableRow key={insurance.id}>
+                    <TableCell className="py-2.5 font-medium">{insurance.name}</TableCell>
+                    <TableCell className="py-2.5 text-muted-foreground">{insurance.ans_code || '—'}</TableCell>
+                    <TableCell className="max-w-[220px] truncate py-2.5 text-muted-foreground" title={contact || undefined}>{contact || '—'}</TableCell>
+                    <TableCell className="max-w-[300px] truncate py-2.5 text-muted-foreground" title={linkedNames.join(', ') || undefined}>
+                      {linkedNames.length ? linkedNames.join(', ') : 'Nenhum vinculado'}
+                    </TableCell>
+                    <TableCell className="py-2.5"><Badge variant={insurance.status === 'active' ? 'default' : 'secondary'}>{insurance.status === 'active' ? 'Ativo' : 'Inativo'}</Badge></TableCell>
+                    <TableCell className="py-2.5 text-right">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(insurance)} aria-label={`Editar ${insurance.name}`} title={`Editar ${insurance.name}`}><Edit className="h-4 w-4" /></Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
