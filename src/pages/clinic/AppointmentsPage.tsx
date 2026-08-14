@@ -505,7 +505,7 @@ export default function AppointmentsPage() {
     return new Date(start.getTime() + (appointment.duration_minutes || 60) * 60000);
   };
   const getAppointmentDisplayName = (appointment) => {
-    return (appointment.patients as { full_name?: string | null } | null)?.full_name || (appointment.leads as { full_name?: string | null } | null)?.full_name || 'Lead sem paciente';
+    return (appointment.patients as { full_name?: string | null } | null)?.full_name || (appointment.leads as { full_name?: string | null } | null)?.full_name || 'Paciente sem cadastro';
   };
   const getBlocksForDay = useCallback((day: Date) => {
     const dayStart = startOfDay(day).getTime();
@@ -1213,7 +1213,7 @@ export default function AppointmentsPage() {
         throw new Error('Lista de espera indisponível: rode as migrations de Agenda Avançada nesta base.');
       }
       if (!clinicId) throw new Error('Clínica não identificada.');
-      if (waitlistTargetType === 'lead' && !waitlistLeadId) throw new Error('Selecione um lead.');
+      if (waitlistTargetType === 'lead' && !waitlistLeadId) throw new Error('Selecione um paciente em avaliação.');
       if (waitlistTargetType === 'patient' && !waitlistPatientId) throw new Error('Selecione um paciente.');
       if (!waitlistWindowStart || !waitlistWindowEnd) throw new Error('Informe a janela de busca.');
       if (waitlistWindowEnd < waitlistWindowStart) throw new Error('A data final deve ser maior ou igual à data inicial.');
@@ -1246,7 +1246,7 @@ export default function AppointmentsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['appointment-waitlist'] });
-      toast({ title: 'Lead/paciente adicionado à lista de espera' });
+      toast({ title: 'Paciente adicionado à lista de espera' });
       resetWaitlistForm();
     },
     onError: (err: Error) => {
@@ -1866,9 +1866,9 @@ export default function AppointmentsPage() {
               </>
             ) : (
               <div className="space-y-2">
-                <Label>Lead *</Label>
+                <Label>Paciente *</Label>
                 <Select value={selectedLead} onValueChange={setSelectedLead}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar lead para avaliação" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecionar paciente para avaliação" /></SelectTrigger>
                   <SelectContent>
                     {leads.map((lead) => (
                       <SelectItem key={lead.id} value={lead.id}>
@@ -1891,7 +1891,7 @@ export default function AppointmentsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="session">Sessão de paciente</SelectItem>
-                  <SelectItem value="evaluation">Avaliação de lead</SelectItem>
+                  <SelectItem value="evaluation">Avaliação de paciente</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2017,7 +2017,7 @@ export default function AppointmentsPage() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Contato:</span><span className="font-medium">{(viewAppt.patients as { phone?: string | null } | null)?.phone}</span></div>
                   )}
                   {(viewAppt.leads as { phone?: string | null } | null)?.phone && (
-                    <div className="flex justify-between"><span className="text-muted-foreground">Contato do lead:</span><span className="font-medium">{(viewAppt.leads as { phone?: string | null } | null)?.phone}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Contato do paciente:</span><span className="font-medium">{(viewAppt.leads as { phone?: string | null } | null)?.phone}</span></div>
                   )}
                   <div className="flex justify-between"><span className="text-muted-foreground">Horário:</span><span className="font-medium">{format(getAppointmentStartDate(viewAppt), 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(getAppointmentEndDate(viewAppt), 'HH:mm')}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted-foreground">Status:</span><BrandBadge status={statusConfig[viewAppt.status]?.badge || 'default'}>{statusConfig[viewAppt.status]?.label || viewAppt.status}</BrandBadge></div>
@@ -2425,16 +2425,16 @@ export default function AppointmentsPage() {
                   <Select value={waitlistTargetType} onValueChange={(value) => setWaitlistTargetType(value as WaitlistTargetType)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lead">Lead</SelectItem>
-                      <SelectItem value="patient">Paciente</SelectItem>
+                      <SelectItem value="lead">Paciente em avaliação</SelectItem>
+                      <SelectItem value="patient">Paciente cadastrado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {waitlistTargetType === 'lead' ? (
                   <div className="space-y-2">
-                    <Label>Lead *</Label>
+                    <Label>Paciente em avaliação *</Label>
                     <Select value={waitlistLeadId} onValueChange={setWaitlistLeadId}>
-                      <SelectTrigger><SelectValue placeholder="Selecionar lead" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Selecionar paciente" /></SelectTrigger>
                       <SelectContent>
                         {leads.map((lead) => (
                           <SelectItem key={lead.id} value={lead.id}>{lead.full_name}</SelectItem>
@@ -2554,7 +2554,7 @@ export default function AppointmentsPage() {
 
               <div className="space-y-2">
                 <Label>Observações</Label>
-                <Textarea rows={2} value={waitlistNotes} onChange={(event) => setWaitlistNotes(event.target.value)} placeholder="Preferências extras do paciente/lead" />
+                <Textarea rows={2} value={waitlistNotes} onChange={(event) => setWaitlistNotes(event.target.value)} placeholder="Preferências extras do paciente" />
               </div>
 
               <div className="flex justify-end gap-2">
@@ -2610,7 +2610,7 @@ export default function AppointmentsPage() {
                     <div key={notification.id} className="rounded-xl border p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div>
                         <p className="font-medium text-foreground">
-                          {notification.appointment_waitlist?.patient_id ? 'Paciente' : 'Lead'} · {notification.appointment_waitlist?.id.slice(0, 8)}
+                          Paciente · {notification.appointment_waitlist?.id.slice(0, 8)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(notification.matched_slot_start), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} - {format(new Date(notification.matched_slot_end), "HH:mm", { locale: ptBR })}
