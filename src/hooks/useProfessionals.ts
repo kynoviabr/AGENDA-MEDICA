@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 export interface Professional {
   id: string;
   clinic_id: string;
-  user_id: string;
+  user_id: string | null;
   role_id: string | null;
   class_entity_id: string | null;
   full_name: string;

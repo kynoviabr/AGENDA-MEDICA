@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranding } from '@/contexts/BrandingContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { useStaffDirectory } from '@/hooks/useStaffDirectory';
+import { useAgendaProfessionals } from '@/hooks/useAgendaProfessionals';
 import { PageHeader } from '@/components/ui/page-header';
 import { BrandButton } from '@/components/ui/brand-button';
 import { BrandBadge, type BadgeStatus } from '@/components/ui/brand-badge';
@@ -321,23 +321,30 @@ export default function AppointmentsPage() {
     enabled: !!clinicId,
   });
 
-  const { staff: professionals = [] } = useStaffDirectory(clinicId);
-  const professionalIdsKey = professionals.map((professional) => professional.user_id).join(',');
+  const { professionals: agendaProfessionals, currentProfessionalId } = useAgendaProfessionals(clinicId, user?.id);
+  const professionals = useMemo(
+    () => agendaProfessionals.map((professional, index) => ({
+      ...professional,
+      color: professionalColors[index % professionalColors.length],
+    })),
+    [agendaProfessionals],
+  );
+  const professionalIdsKey = professionals.map((professional) => professional.id).join(',');
 
   useEffect(() => {
     if (professionals.length === 0) return;
-    if (isProfessional && user?.id) {
-      setSelectedDoctorIds([user.id]);
-      setFilterProfessional(user.id);
+    if (isProfessional && currentProfessionalId) {
+      setSelectedDoctorIds([currentProfessionalId]);
+      setFilterProfessional(currentProfessionalId);
       return;
     }
     setSelectedDoctorIds((current) => {
       const next = current.length > 0
-        ? current.filter((id) => professionals.some((professional) => professional.user_id === id))
-        : professionals.map((professional) => professional.user_id);
+        ? current.filter((id) => professionals.some((professional) => professional.id === id))
+        : professionals.map((professional) => professional.id);
       return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
     });
-  }, [isProfessional, professionalIdsKey, user?.id]);
+  }, [isProfessional, professionalIdsKey, currentProfessionalId, professionals]);
 
   const { data: availability = [] } = useQuery({
     queryKey: ['professional-availability', clinicId],
@@ -479,7 +486,7 @@ export default function AppointmentsPage() {
   }, [appointmentBlocks]);
   const getProfessionalLabel = (professionalId?: string | null) => {
     if (!professionalId) return 'Não atribuído';
-    return professionals.find((professional) => professional.user_id === professionalId)?.label || 'Profissional';
+    return professionals.find((professional) => professional.id === professionalId)?.label || 'Profissional';
   };
   const hasAvailabilityWindow = (professionalId: string | null, startTime: Date, endTime: Date) => {
     if (!professionalId) return true;
@@ -606,19 +613,19 @@ export default function AppointmentsPage() {
 
     const lead = getSelectedLeadData(selectedLead);
     if (!lead?.assigned_to) {
-      if (!selectedProfessional && isProfessional && user?.id) {
-        setSelectedProfessional(user.id);
+      if (!selectedProfessional && isProfessional && currentProfessionalId) {
+        setSelectedProfessional(currentProfessionalId);
       }
       return;
     }
 
-    const hasProfessionalAssigned = professionals.some((professional) => professional.user_id === lead.assigned_to);
-    setSelectedProfessional(hasProfessionalAssigned ? lead.assigned_to : (isProfessional && user?.id ? user.id : ''));
-  }, [appointmentType, selectedLead, professionals, isProfessional, user, dialogOpen, selectedProfessional, getSelectedLeadData]);
+    const assignedProfessional = professionals.find((professional) => professional.user_id === lead.assigned_to);
+    setSelectedProfessional(assignedProfessional?.id || (isProfessional ? currentProfessionalId || '' : ''));
+  }, [appointmentType, selectedLead, professionals, isProfessional, currentProfessionalId, dialogOpen, selectedProfessional, getSelectedLeadData]);
 
   useEffect(() => {
     if (professionals.length > 0 && availabilityProfessional === 'unassigned') {
-      setAvailabilityProfessional(professionals[0].user_id);
+      setAvailabilityProfessional(professionals[0].id);
     }
   }, [professionals, availabilityProfessional]);
 
@@ -646,7 +653,7 @@ export default function AppointmentsPage() {
 
   const getProfColor = (profId: string | null) => {
     if (!profId) return professionalColors[0];
-    const index = professionals.findIndex(p => p.user_id === profId);
+    const index = professionals.findIndex(p => p.id === profId);
     return professionalColors[(index >= 0 ? index : 0) % professionalColors.length];
   };
 
@@ -798,7 +805,7 @@ export default function AppointmentsPage() {
       setCreateFormError('');
       const startTime = new Date(`${selectedDate}T${selectedTime}:00`);
       const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
-      const profId = selectedProfessional || (isProfessional ? user?.id || null : null);
+      const profId = selectedProfessional || (isProfessional ? currentProfessionalId : null);
       if (!profId) {
         throw new Error('Selecione um profissional para este agendamento.');
       }
@@ -1463,7 +1470,7 @@ export default function AppointmentsPage() {
   };
 
   const getApptsForDay = (day: Date) => filteredAppointments.filter((a) => isSameDay(getAppointmentStartDate(a), day));
-  const selectedDoctors = professionals.filter((professional) => selectedDoctorIds.includes(professional.user_id));
+  const selectedDoctors = professionals.filter((professional) => selectedDoctorIds.includes(professional.id));
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   const headerLabel = viewMode === 'month'
@@ -1524,8 +1531,8 @@ export default function AppointmentsPage() {
           <BrandButton onClick={() => {
             resetForm();
             setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
-            if (isProfessional && user?.id) {
-              setSelectedProfessional(user.id);
+            if (isProfessional && currentProfessionalId) {
+              setSelectedProfessional(currentProfessionalId || '');
             }
             setDialogOpen(true);
           }}>
@@ -1627,7 +1634,7 @@ export default function AppointmentsPage() {
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem
                   checked={selectedDoctorIds.length === professionals.length && professionals.length > 0}
-                  onCheckedChange={(checked) => setSelectedDoctorIds(checked ? professionals.map((professional) => professional.user_id) : [])}
+                  onCheckedChange={(checked) => setSelectedDoctorIds(checked ? professionals.map((professional) => professional.id) : [])}
                   onSelect={(event) => event.preventDefault()}
                 >
                   Todos os médicos
@@ -1635,11 +1642,11 @@ export default function AppointmentsPage() {
                 <DropdownMenuSeparator />
                 {professionals.map((professional) => (
                   <DropdownMenuCheckboxItem
-                    key={professional.user_id}
-                    checked={selectedDoctorIds.includes(professional.user_id)}
+                    key={professional.id}
+                    checked={selectedDoctorIds.includes(professional.id)}
                     onCheckedChange={(checked) => setSelectedDoctorIds((current) => checked
-                      ? Array.from(new Set([...current, professional.user_id]))
-                      : current.filter((id) => id !== professional.user_id))}
+                      ? Array.from(new Set([...current, professional.id]))
+                      : current.filter((id) => id !== professional.id))}
                     onSelect={(event) => event.preventDefault()}
                   >
                     <span className="mr-2 h-3 w-3 rounded-full" style={{ background: professional.color }} />
@@ -1655,7 +1662,7 @@ export default function AppointmentsPage() {
                 <SelectItem value="all">Todos os médicos</SelectItem>
                 <SelectItem value="unassigned">Não atribuído</SelectItem>
                 {professionals.map(p => (
-                  <SelectItem key={p.user_id} value={p.user_id}>
+                  <SelectItem key={p.id} value={p.id}>
                     <span className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full inline-block" style={{ background: p.color }} />
                       {p.label}
@@ -1804,7 +1811,7 @@ export default function AppointmentsPage() {
         {professionals.length > 0 && viewMode !== 'day' && (
           <div className="flex flex-wrap gap-3">
             {professionals.map(p => (
-              <span key={p.user_id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span key={p.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="w-3 h-3 rounded-full" style={{ background: p.color }} />
                 {p.label}
               </span>
@@ -1843,12 +1850,12 @@ export default function AppointmentsPage() {
             <div className="grid min-w-max divide-x" style={{ gridTemplateColumns: `repeat(${selectedDoctors.length}, minmax(280px, 1fr))` }}>
               {selectedDoctors.map((professional) => {
                 const doctorAppointments = getApptsForDay(currentDate)
-                  .filter((appointment) => appointment.professional_id === professional.user_id)
+                  .filter((appointment) => appointment.professional_id === professional.id)
                   .sort((a, b) => +getAppointmentStartDate(a) - +getAppointmentStartDate(b));
                 const doctorBlocks = getBlocksForDay(currentDate)
-                  .filter((block) => !block.professional_id || block.professional_id === professional.user_id);
+                  .filter((block) => !block.professional_id || block.professional_id === professional.id);
                 return (
-                  <section key={professional.user_id} className="min-h-[480px]">
+                  <section key={professional.id} className="min-h-[480px]">
                     <div className="sticky top-0 z-10 border-b bg-secondary/70 px-4 py-3 backdrop-blur">
                       <div className="flex items-center gap-2">
                         <span className="h-3 w-3 rounded-full" style={{ background: professional.color }} />
@@ -1864,7 +1871,7 @@ export default function AppointmentsPage() {
                       onClick={() => {
                         resetForm();
                         setSelectedDate(format(currentDate, 'yyyy-MM-dd'));
-                        setSelectedProfessional(professional.user_id);
+                        setSelectedProfessional(professional.id);
                         setDialogOpen(true);
                       }}
                     >
@@ -2198,7 +2205,7 @@ export default function AppointmentsPage() {
               <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
                 <SelectTrigger><SelectValue placeholder="Selecionar profissional" /></SelectTrigger>
                 <SelectContent>
-                  {professionals.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.label}</SelectItem>)}
+                  {professionals.map(p => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
                 </SelectContent>
               </Select>
               {appointmentType === 'evaluation' && !selectedProfessional && (
@@ -2284,7 +2291,7 @@ export default function AppointmentsPage() {
                         <SelectContent>
                           <SelectItem value="unassigned">Sem profissional</SelectItem>
                           {professionals.map((professional) => (
-                            <SelectItem key={professional.user_id} value={professional.user_id}>
+                            <SelectItem key={professional.id} value={professional.id}>
                               {professional.label}
                             </SelectItem>
                           ))}
@@ -2425,7 +2432,7 @@ export default function AppointmentsPage() {
                           <SelectContent>
                             <SelectItem value="unassigned">Sem profissional</SelectItem>
                             {professionals.map((professional) => (
-                              <SelectItem key={professional.user_id} value={professional.user_id}>
+                              <SelectItem key={professional.id} value={professional.id}>
                                 {professional.label}
                               </SelectItem>
                             ))}
@@ -2475,7 +2482,7 @@ export default function AppointmentsPage() {
                 <SelectTrigger><SelectValue placeholder="Selecionar profissional" /></SelectTrigger>
                 <SelectContent>
                   {professionals.map((professional) => (
-                    <SelectItem key={professional.user_id} value={professional.user_id}>
+                    <SelectItem key={professional.id} value={professional.id}>
                       {professional.label}
                     </SelectItem>
                   ))}
@@ -2556,7 +2563,7 @@ export default function AppointmentsPage() {
                     <SelectContent>
                       <SelectItem value="all">Bloqueio geral</SelectItem>
                       {professionals.map((professional) => (
-                        <SelectItem key={professional.user_id} value={professional.user_id}>
+                        <SelectItem key={professional.id} value={professional.id}>
                           {professional.label}
                         </SelectItem>
                       ))}
@@ -2709,7 +2716,7 @@ export default function AppointmentsPage() {
                     <SelectContent>
                       <SelectItem value="any">Qualquer profissional</SelectItem>
                       {professionals.map((professional) => (
-                        <SelectItem key={professional.user_id} value={professional.user_id}>{professional.label}</SelectItem>
+                        <SelectItem key={professional.id} value={professional.id}>{professional.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

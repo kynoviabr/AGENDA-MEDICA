@@ -73,6 +73,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "appointments_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "appointments_treatment_id_fkey"
             columns: ["treatment_id"]
             isOneToOne: false
@@ -1292,7 +1299,7 @@ export type Database = {
           specialty: string | null
           status: string
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           additional_phones?: string[]
@@ -1310,7 +1317,7 @@ export type Database = {
           specialty?: string | null
           status?: string
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           additional_phones?: string[]
@@ -1328,7 +1335,7 @@ export type Database = {
           specialty?: string | null
           status?: string
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

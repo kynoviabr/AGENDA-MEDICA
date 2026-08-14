@@ -99,7 +99,6 @@ export default function ProfessionalsTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) { toast.error('Informe o nome completo do profissional'); return; }
-    if (!form.user_id.trim()) { toast.error('Informe o User ID do profissional'); return; }
     if (!form.role_id) { toast.error('Selecione um cargo'); return; }
     if (!form.class_entity_id) { toast.error('Selecione uma entidade de classe'); return; }
     const cpfDigits = form.cpf.replace(/\D/g, '');
@@ -111,7 +110,7 @@ export default function ProfessionalsTab() {
       full_name: form.full_name, cpf: cpfDigits || null, email: form.email || null,
       phone: form.phone || null, specialty: form.specialty || null,
       additional_phones: Array.from(new Set(additionalPhones.map(phone => phone.trim()).filter(phone => phone && phone !== form.phone.trim()))),
-      registration_number: form.registration_number || null, user_id: form.user_id,
+      registration_number: form.registration_number || null, user_id: form.user_id.trim() || null,
       role_id: form.role_id, class_entity_id: form.class_entity_id, status: 'active',
     });
     if (result) {
@@ -279,8 +278,9 @@ export default function ProfessionalsTab() {
                         {cpfError && <p className="text-xs text-destructive flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{cpfError}</p>}
                       </div>
                       <div className="space-y-1.5">
-                        <Label>User ID <span className="text-destructive">*</span></Label>
-                        <Input value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))} required placeholder="UUID do usuário" className="font-mono text-xs" />
+                        <Label>User ID de acesso (opcional)</Label>
+                        <Input value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))} placeholder="Vincule apenas se possuir login" className="font-mono text-xs" />
+                        <p className="text-xs text-muted-foreground">O profissional pode receber agendamentos sem possuir acesso ao sistema.</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">

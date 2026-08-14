@@ -29,7 +29,7 @@ type AppointmentRow = {
 };
 
 type ProfessionalRow = {
-  user_id: string;
+  id: string;
   full_name: string;
   specialty: string | null;
 };
@@ -91,7 +91,7 @@ export default function ClinicDashboard() {
           .lte('start_time', queryEnd.toISOString()),
         supabase
           .from('professionals')
-          .select('user_id, full_name, specialty')
+          .select('id, full_name, specialty')
           .eq('clinic_id', clinicId!)
           .eq('status', 'active')
           .order('full_name'),
@@ -122,22 +122,22 @@ export default function ClinicDashboard() {
     const appointments = dashboardQuery.data?.appointments || [];
     const professionals = dashboardQuery.data?.professionals || [];
     const waitlist = dashboardQuery.data?.waitlist || [];
-    const professionalMap = new Map(professionals.map((item) => [item.user_id, item]));
+    const professionalMap = new Map(professionals.map((item) => [item.id, item]));
 
     const todayRows = appointments.filter((row) => inRange(row.start_time, todayStart, todayEnd));
     const weekRows = appointments.filter((row) => inRange(row.start_time, weekStart, weekEnd));
     const monthRows = appointments.filter((row) => inRange(row.start_time, monthStart, monthEnd));
 
     const doctorRows = professionals.map((professional) => {
-      const doctorAppointments = appointments.filter((row) => row.professional_id === professional.user_id);
+      const doctorAppointments = appointments.filter((row) => row.professional_id === professional.id);
       return {
-        id: professional.user_id,
+        id: professional.id,
         name: professional.full_name,
         specialty: professional.specialty || 'Sem especialidade',
         today: uniquePatients(doctorAppointments.filter((row) => inRange(row.start_time, todayStart, todayEnd))),
         week: uniquePatients(doctorAppointments.filter((row) => inRange(row.start_time, weekStart, weekEnd))),
         month: uniquePatients(doctorAppointments.filter((row) => inRange(row.start_time, monthStart, monthEnd))),
-        waitlist: waitlist.filter((row) => row.preferred_professional_id === professional.user_id).length,
+        waitlist: waitlist.filter((row) => row.preferred_professional_id === professional.id).length,
       };
     }).filter((row) => row.today + row.week + row.month + row.waitlist > 0);
 

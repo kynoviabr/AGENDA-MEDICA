@@ -24,6 +24,12 @@ Clínicas novas recebem automaticamente uma base editável com dez marcas comuns
 
 A relação muitos-para-muitos é armazenada em `professional_health_insurances`, sempre vinculada à mesma clínica do convênio e do profissional. Essa estrutura foi criada para que o atendimento com IA possa, em uma etapa posterior, consultar com segurança quais profissionais estão disponíveis para o convênio informado pelo paciente. A estrutura está pronta; a consulta ainda precisa ser conectada ao fluxo conversacional da IA antes de ser considerada uma resposta automatizada ativa.
 
+## Identidade do profissional na agenda
+
+`professionals.id` é a identidade canônica de um profissional nos agendamentos, disponibilidades, bloqueios e fila de espera. `professionals.user_id` é opcional e serve exclusivamente para vincular o profissional a uma conta do Supabase Auth quando ele precisar acessar o sistema.
+
+Isso permite cadastrar e agendar profissionais sem criar contas de login. A migration `20260814175403_phase2_professional_identity.sql` converte referências legadas baseadas em `auth.users.id`, interrompe a execução se encontrar uma referência sem correspondência e valida que o profissional pertence à mesma clínica do registro de agenda.
+
 ## WhatsApp com IA — funcionalidade central
 
 O WhatsApp com IA faz parte do núcleo do produto e **não está entre os módulos MVP desativados**. A arquitetura é multi-clínica:
