@@ -1141,6 +1141,98 @@ export type Database = {
           },
         ]
       }
+      health_insurances: {
+        Row: {
+          ans_code: string | null
+          authorization_notes: string | null
+          clinic_id: string
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          ans_code?: string | null
+          authorization_notes?: string | null
+          clinic_id: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          ans_code?: string | null
+          authorization_notes?: string | null
+          clinic_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_insurances_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_health_insurances: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          health_insurance_id: string
+          id: string
+          professional_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          health_insurance_id: string
+          id?: string
+          professional_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          health_insurance_id?: string
+          id?: string
+          professional_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_health_insurances_insurance_clinic_fkey"
+            columns: ["health_insurance_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "health_insurances"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "professional_health_insurances_professional_clinic_fkey"
+            columns: ["professional_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
       professional_treatments: {
         Row: {
           created_at: string

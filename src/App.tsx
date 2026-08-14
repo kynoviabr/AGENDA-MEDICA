@@ -21,6 +21,7 @@ import AppointmentsPage from "./pages/clinic/AppointmentsPage";
 import ReportsPage from "./pages/clinic/ReportsPage";
 import SettingsPage from "./pages/clinic/SettingsPage";
 import WhatsAppAiPage from "./pages/clinic/WhatsAppAiPage";
+import HealthInsurancesPage from "./pages/clinic/HealthInsurancesPage";
 import PortalHomePage from "./pages/portal/PortalHomePage";
 import NotFound from "./pages/NotFound";
 
@@ -56,6 +57,7 @@ const App = () => (
                 <Route path="patients" element={<PatientsPage />} />
                 <Route path="patients/:id" element={<PatientDetailPage />} />
                 <Route path="treatments" element={<TreatmentsPage readOnly />} />
+                <Route path="health-insurances" element={<HealthInsurancesPage />} />
                 <Route path="appointments" element={<AppointmentsPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
