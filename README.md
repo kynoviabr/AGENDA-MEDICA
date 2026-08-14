@@ -32,6 +32,8 @@ O repositório contém código de um MVP anterior para os módulos abaixo, mas e
 ### O que significa “desativado”
 
 - Os módulos não aparecem na navegação da clínica.
+- As abas de Configurações relacionadas a Metas, Custos, Anamnese e Parâmetros/Alertas desses módulos também ficam ocultas.
+- As permissões dos módulos desativados não são oferecidas na gestão de grupos de acesso.
 - Os recursos equivalentes de Contratos, Pagamentos, Sessões, Evolução, Fotos e Feedback também não aparecem no portal do paciente.
 - Tentativas de abrir diretamente as rotas desses módulos são redirecionadas para o início da área correspondente.
 - O código-fonte, componentes, páginas, permissões e estrutura de banco foram preservados como referência do MVP.

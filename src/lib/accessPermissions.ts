@@ -24,6 +24,30 @@ export const MENU_PERMISSION_KEYS = [
 
 export type MenuPermissionKey = (typeof MENU_PERMISSION_KEYS)[number];
 
+/**
+ * Permissões do MVP legado mantidas no domínio para compatibilidade com dados
+ * existentes, mas ocultas da configuração enquanto os módulos estão desativados.
+ */
+export const DISABLED_MVP_PERMISSION_KEYS = [
+  'proposals.view',
+  'contracts.view',
+  'payments.view',
+  'finance_contracts.view',
+  'goals.view',
+  'sessions.view',
+  'evolution.view',
+  'photos.view',
+  'feedback.view',
+  'nps.view',
+  'satisfaction.view',
+] as const satisfies readonly MenuPermissionKey[];
+
+const disabledMvpPermissionSet = new Set<MenuPermissionKey>(DISABLED_MVP_PERMISSION_KEYS);
+
+export const ACTIVE_MENU_PERMISSION_KEYS = MENU_PERMISSION_KEYS.filter(
+  (key) => !disabledMvpPermissionSet.has(key),
+);
+
 export const PATH_PERMISSION_MAP: Array<{ prefix: string; key: MenuPermissionKey }> = [
   { prefix: '/clinic/settings', key: 'settings.view' },
   { prefix: '/clinic/whatsapp-ai', key: 'whatsapp_ai.view' },

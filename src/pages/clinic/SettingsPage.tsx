@@ -12,20 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, DollarSign, SlidersHorizontal, Target, Briefcase, Building2, UserCog, AlertTriangle, Lock, MessageSquare, ClipboardList } from 'lucide-react';
+import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare } from 'lucide-react';
 import CategoriesTab from '@/components/settings/CategoriesTab';
-import CostItemsTab from '@/components/settings/CostItemsTab';
-import ParametersTab from '@/components/settings/ParametersTab';
-import SalesGoalsTab from '@/components/settings/SalesGoalsTab';
 import ProfessionalsTab from '@/components/settings/ProfessionalsTab';
 import RolesTab from '@/components/settings/RolesTab';
 import ClassEntitiesTab from '@/components/settings/ClassEntitiesTab';
-import DashboardAlertsTab from '@/components/settings/DashboardAlertsTab';
 import KanbanStagesTab from '@/components/settings/KanbanStagesTab';
 import PatientAppAccessTab from '@/components/settings/PatientAppAccessTab';
 import AccessGroupsTab from '@/components/settings/AccessGroupsTab';
 import WhatsAppAiSettingsTab from '@/components/settings/WhatsAppAiSettingsTab';
-import AnamneseTemplatesTab from '@/components/settings/AnamneseTemplatesTab';
 import TreatmentsPage from '@/pages/clinic/TreatmentsPage';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -223,15 +218,11 @@ export default function SettingsPage() {
           <TabsTrigger value="roles"><Briefcase className="w-4 h-4 mr-1" />Cargos</TabsTrigger>
           <TabsTrigger value="entities"><Building2 className="w-4 h-4 mr-1" />Conselhos</TabsTrigger>
           <TabsTrigger value="categories"><Tags className="w-4 h-4 mr-1" />Categorias</TabsTrigger>
-          <TabsTrigger value="costs"><DollarSign className="w-4 h-4 mr-1" />Custos</TabsTrigger>
           <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
           <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Tratamentos</TabsTrigger>
-          <TabsTrigger value="anamnese"><ClipboardList className="w-4 h-4 mr-1" />Anamnese</TabsTrigger>
           <TabsTrigger value="whatsapp-ai"><MessageSquare className="w-4 h-4 mr-1" />WhatsApp IA</TabsTrigger>
           <TabsTrigger value="crm-kanban"><Settings className="w-4 h-4 mr-1" />CRM Kanban</TabsTrigger>
-          <TabsTrigger value="goals"><Target className="w-4 h-4 mr-1" />Metas</TabsTrigger>
-          <TabsTrigger value="parameters"><SlidersHorizontal className="w-4 h-4 mr-1" />Parâmetros</TabsTrigger>
         </TabsList>
 
         {/* ===== GENERAL ===== */}
@@ -497,10 +488,6 @@ export default function SettingsPage() {
           <TreatmentsPage embedded />
         </TabsContent>
 
-        <TabsContent value="anamnese">
-          <AnamneseTemplatesTab />
-        </TabsContent>
-
         <TabsContent value="whatsapp-ai">
           <WhatsAppAiSettingsTab />
         </TabsContent>
@@ -508,30 +495,6 @@ export default function SettingsPage() {
         {/* ===== CATEGORIES ===== */}
         <TabsContent value="categories">
           <CategoriesTab />
-        </TabsContent>
-
-        {/* ===== COSTS ===== */}
-        <TabsContent value="costs">
-          <CostItemsTab />
-        </TabsContent>
-
-        {/* ===== PARAMETERS ===== */}
-        <TabsContent value="parameters">
-          <div className="space-y-6">
-            <ParametersTab />
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                <h3 className="text-sm font-semibold text-foreground">Alertas Dashboard</h3>
-              </div>
-              <DashboardAlertsTab />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ===== SALES GOALS ===== */}
-        <TabsContent value="goals">
-          <SalesGoalsTab />
         </TabsContent>
 
         <TabsContent value="crm-kanban">
