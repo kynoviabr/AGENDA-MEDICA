@@ -1286,6 +1286,7 @@ export type Database = {
           full_name: string
           id: string
           phone: string | null
+          private_consultation_price: number | null
           registration_number: string | null
           role_id: string | null
           specialty: string | null
@@ -1303,6 +1304,7 @@ export type Database = {
           full_name: string
           id?: string
           phone?: string | null
+          private_consultation_price?: number | null
           registration_number?: string | null
           role_id?: string | null
           specialty?: string | null
@@ -1320,6 +1322,7 @@ export type Database = {
           full_name?: string
           id?: string
           phone?: string | null
+          private_consultation_price?: number | null
           registration_number?: string | null
           role_id?: string | null
           specialty?: string | null

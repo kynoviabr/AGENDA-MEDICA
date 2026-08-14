@@ -29,7 +29,12 @@ const emptyForm: InsuranceForm = {
   name: '', ans_code: '', phone: '', email: '', authorization_notes: '', status: 'active',
 };
 
-export default function HealthInsurancesPage() {
+interface HealthInsurancesPageProps {
+  embedded?: boolean;
+  manageProfessionalLinks?: boolean;
+}
+
+export default function HealthInsurancesPage({ embedded = false, manageProfessionalLinks = true }: HealthInsurancesPageProps) {
   const { clinicId } = useUserRole();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -89,13 +94,15 @@ export default function HealthInsurancesPage() {
       }
 
       if (!insuranceId) return;
-      const { error: deleteError } = await supabase.from('professional_health_insurances').delete().eq('health_insurance_id', insuranceId).eq('clinic_id', clinicId);
-      if (deleteError) throw deleteError;
-      if (professionalIds.length) {
-        const { error } = await supabase.from('professional_health_insurances').insert(
-          professionalIds.map(professionalId => ({ clinic_id: clinicId, health_insurance_id: insuranceId!, professional_id: professionalId })),
-        );
-        if (error) throw error;
+      if (manageProfessionalLinks) {
+        const { error: deleteError } = await supabase.from('professional_health_insurances').delete().eq('health_insurance_id', insuranceId).eq('clinic_id', clinicId);
+        if (deleteError) throw deleteError;
+        if (professionalIds.length) {
+          const { error } = await supabase.from('professional_health_insurances').insert(
+            professionalIds.map(professionalId => ({ clinic_id: clinicId, health_insurance_id: insuranceId!, professional_id: professionalId })),
+          );
+          if (error) throw error;
+        }
       }
     },
     onSuccess: async () => {
@@ -134,9 +141,16 @@ export default function HealthInsurancesPage() {
 
   return (
     <div>
-      <PageHeader title="Convênios" description="Cadastre os planos aceitos e indique quais profissionais atendem cada convênio.">
-        <BrandButton onClick={startCreate}><Plus className="h-4 w-4" />Novo convênio</BrandButton>
-      </PageHeader>
+      {embedded ? (
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-lg font-semibold">Cadastro de convênios</h2><p className="text-sm text-muted-foreground">Mantenha a lista de planos aceitos pela clínica.</p></div>
+          <BrandButton onClick={startCreate}><Plus className="h-4 w-4" />Novo convênio</BrandButton>
+        </div>
+      ) : (
+        <PageHeader title="Convênios" description="Cadastre os planos aceitos e indique quais profissionais atendem cada convênio.">
+          <BrandButton onClick={startCreate}><Plus className="h-4 w-4" />Novo convênio</BrandButton>
+        </PageHeader>
+      )}
 
       <div className="relative mb-5 max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -197,7 +211,7 @@ export default function HealthInsurancesPage() {
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="insurance-notes">Orientações para autorização</Label><Textarea id="insurance-notes" value={form.authorization_notes} onChange={event => setForm(current => ({ ...current, authorization_notes: event.target.value }))} placeholder="Documentos, prazos e regras que a equipe e a IA devem considerar" rows={3} /></div>
             </div>
 
-            <div className="space-y-3 rounded-lg border p-4">
+            {manageProfessionalLinks && <div className="space-y-3 rounded-lg border p-4">
               <div><p className="text-sm font-semibold">Profissionais que atendem este convênio</p><p className="text-xs text-muted-foreground">Esta relação poderá ser consultada pela IA durante o atendimento.</p></div>
               {professionals.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum profissional ativo cadastrado.</p> : professionals.map(professional => (
                 <label key={professional.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50">
@@ -205,7 +219,7 @@ export default function HealthInsurancesPage() {
                   <span className="text-sm">{professional.full_name}{professional.specialty ? ` — ${professional.specialty}` : ''}</span>
                 </label>
               ))}
-            </div>
+            </div>}
 
             <label className="flex items-center gap-3"><Checkbox checked={form.status === 'active'} onCheckedChange={checked => setForm(current => ({ ...current, status: checked ? 'active' : 'inactive' }))} /><span className="text-sm">Convênio ativo</span></label>
             <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={saveMutation.isPending || !form.name.trim()}>{saveMutation.isPending ? 'Salvando...' : 'Salvar convênio'}</Button></div>

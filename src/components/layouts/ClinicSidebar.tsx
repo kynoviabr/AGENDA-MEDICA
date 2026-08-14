@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, CalendarDays, MessageSquare, Settings, LogOut,
-  Menu, X, Stethoscope, KanbanSquare, ShieldCheck
+  Menu, X, Stethoscope, KanbanSquare
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranding } from '@/contexts/BrandingContext';
@@ -26,7 +26,6 @@ const navItems: NavItem[] = [
   { to: '/clinic/whatsapp-ai', icon: MessageSquare, label: 'WhatsApp IA', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'whatsapp_ai.view' },
   { to: '/clinic/patients', icon: Users, label: 'Pacientes', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'patients.view' },
   { to: '/clinic/treatments', icon: Stethoscope, label: 'Tratamentos', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'treatments.view' },
-  { to: '/clinic/health-insurances', icon: ShieldCheck, label: 'Convênios', roles: ['admin'], permissionKey: 'health_insurances.view' },
   { to: '/clinic/appointments', icon: CalendarDays, label: 'Agenda', roles: ['admin', 'receptionist', 'professional'], permissionKey: 'appointments.view' },
   { to: '/clinic/reports', icon: MessageSquare, label: 'Relatórios', roles: ['admin', 'sales'], permissionKey: 'reports.view' },
   { to: '/clinic/settings', icon: Settings, label: 'Configurações', roles: ['admin'], permissionKey: 'settings.view' },

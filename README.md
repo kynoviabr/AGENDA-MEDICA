@@ -18,7 +18,7 @@ O plano técnico para operar de 100 a 1.000 clínicas está em [`docs/ESCALABILI
 
 ## Convênios e profissionais
 
-O módulo **Convênios** permite cadastrar, por clínica, o nome do plano, registro ANS, contatos, orientações de autorização, situação e os profissionais que o atendem.
+A área **Configurações → Atendimento** concentra o cadastro de convênios, o valor da consulta particular por profissional e o vínculo profissional × convênio. O cadastro permite manter, por clínica, o nome do plano, registro ANS, contatos, orientações de autorização e situação.
 
 Clínicas novas recebem automaticamente uma base editável com dez marcas comuns: Unimed, Bradesco Saúde, SulAmérica Saúde, Amil, Hapvida, NotreDame Intermédica, Porto Saúde, Prevent Senior, Care Plus e CASSI. O registro ANS não é preenchido automaticamente, pois uma marca pode operar por diferentes pessoas jurídicas e registros regionais; a clínica deve informar o código correspondente ao próprio contrato.
 
