@@ -84,14 +84,17 @@ export default function HealthcareSettingsTab() {
   const linksMutation = useMutation({
     mutationFn: async () => {
       if (!clinicId || !selectedProfessionalId) throw new Error('Selecione um profissional');
-      const { error: deleteError } = await supabase.from('professional_health_insurances').delete().eq('clinic_id', clinicId).eq('professional_id', selectedProfessionalId);
-      if (deleteError) throw deleteError;
       if (selectedInsuranceIds.length) {
-        const { error } = await supabase.from('professional_health_insurances').insert(
+        const { error } = await supabase.from('professional_health_insurances').upsert(
           selectedInsuranceIds.map(insuranceId => ({ clinic_id: clinicId, professional_id: selectedProfessionalId, health_insurance_id: insuranceId })),
+          { onConflict: 'health_insurance_id,professional_id' },
         );
         if (error) throw error;
       }
+      let deleteQuery = supabase.from('professional_health_insurances').delete().eq('clinic_id', clinicId).eq('professional_id', selectedProfessionalId);
+      if (selectedInsuranceIds.length) deleteQuery = deleteQuery.not('health_insurance_id', 'in', `(${selectedInsuranceIds.join(',')})`);
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) throw deleteError;
     },
     onSuccess: async () => {
       await Promise.all([
