@@ -109,7 +109,7 @@ export default function ClinicSidebar() {
                 {clinicName}
               </h1>
               <p className="text-[11px] uppercase tracking-wider text-white/50 font-medium mt-0.5">
-                Clinic OS
+                Agenda Med
               </p>
             </div>
           </div>
