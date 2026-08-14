@@ -16,8 +16,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
 import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
@@ -45,7 +46,7 @@ const statusConfig: Record<string, { label: string; badge: BadgeStatus; style: s
   in_progress: { label: 'Em andamento', badge: 'in_progress', style: 'border-l-4 border-l-info' },
 };
 
-type ViewMode = 'month' | 'week' | 'day';
+type ViewMode = 'month' | 'week' | 'day' | 'doctors-day';
 type WaitlistWindowType = Database['public']['Enums']['waitlist_window_type'];
 type WaitlistPriority = Database['public']['Enums']['waitlist_priority'];
 type WaitlistContactPreference = Database['public']['Enums']['waitlist_contact_preference'];
@@ -157,6 +158,7 @@ export default function AppointmentsPage() {
   const [selectedTreatment, setSelectedTreatment] = useState('');
   const [selectedProfessional, setSelectedProfessional] = useState('');
   const [filterProfessional, setFilterProfessional] = useState('all');
+  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState('all');
   const [queueExpanded, setQueueExpanded] = useState(true);
   const [createFormError, setCreateFormError] = useState('');
@@ -320,6 +322,22 @@ export default function AppointmentsPage() {
   });
 
   const { staff: professionals = [] } = useStaffDirectory(clinicId);
+  const professionalIdsKey = professionals.map((professional) => professional.user_id).join(',');
+
+  useEffect(() => {
+    if (professionals.length === 0) return;
+    if (isProfessional && user?.id) {
+      setSelectedDoctorIds([user.id]);
+      setFilterProfessional(user.id);
+      return;
+    }
+    setSelectedDoctorIds((current) => {
+      const next = current.length > 0
+        ? current.filter((id) => professionals.some((professional) => professional.user_id === id))
+        : professionals.map((professional) => professional.user_id);
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+    });
+  }, [isProfessional, professionalIdsKey, user?.id]);
 
   const { data: availability = [] } = useQuery({
     queryKey: ['professional-availability', clinicId],
@@ -703,7 +721,9 @@ export default function AppointmentsPage() {
 
   const filteredAppointments = useMemo(() => {
     let filtered = appointments;
-    if (filterProfessional === 'unassigned') {
+    if (viewMode === 'doctors-day') {
+      filtered = filtered.filter((appointment) => !!appointment.professional_id && selectedDoctorIds.includes(appointment.professional_id));
+    } else if (filterProfessional === 'unassigned') {
       filtered = filtered.filter((appointment) => !appointment.professional_id);
     } else if (filterProfessional !== 'all') {
       filtered = filtered.filter((a) => a.professional_id === filterProfessional);
@@ -712,7 +732,7 @@ export default function AppointmentsPage() {
       filtered = filtered.filter((a) => a.status === filterStatus);
     }
     return filtered;
-  }, [appointments, filterProfessional, filterStatus]);
+  }, [appointments, filterProfessional, filterStatus, selectedDoctorIds, viewMode]);
 
   const operationalSummary = useMemo(() => {
     const todayAppointments = filteredAppointments.filter((appointment) =>
@@ -1443,6 +1463,7 @@ export default function AppointmentsPage() {
   };
 
   const getApptsForDay = (day: Date) => filteredAppointments.filter((a) => isSameDay(getAppointmentStartDate(a), day));
+  const selectedDoctors = professionals.filter((professional) => selectedDoctorIds.includes(professional.user_id));
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   const headerLabel = viewMode === 'month'
@@ -1592,22 +1613,58 @@ export default function AppointmentsPage() {
           <button onClick={() => navigate_(1)} className="p-2 rounded-lg hover:bg-secondary"><ChevronRight className="w-5 h-5" /></button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Select value={filterProfessional} onValueChange={setFilterProfessional}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Todos profissionais" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os responsáveis</SelectItem>
-              <SelectItem value="unassigned">Não atribuído</SelectItem>
-              {professionals.map(p => (
-                <SelectItem key={p.user_id} value={p.user_id}>
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full inline-block" style={{ background: p.color }} />
-                    {p.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {viewMode === 'doctors-day' ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <BrandButton variant="outline" className="min-w-[210px] justify-between">
+                  <span className="flex items-center gap-2"><Stethoscope className="h-4 w-4" />{selectedDoctorIds.length} médico(s)</span>
+                  <ChevronDown className="h-4 w-4" />
+                </BrandButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Médicos exibidos no dia</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedDoctorIds.length === professionals.length && professionals.length > 0}
+                  onCheckedChange={(checked) => setSelectedDoctorIds(checked ? professionals.map((professional) => professional.user_id) : [])}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  Todos os médicos
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {professionals.map((professional) => (
+                  <DropdownMenuCheckboxItem
+                    key={professional.user_id}
+                    checked={selectedDoctorIds.includes(professional.user_id)}
+                    onCheckedChange={(checked) => setSelectedDoctorIds((current) => checked
+                      ? Array.from(new Set([...current, professional.user_id]))
+                      : current.filter((id) => id !== professional.user_id))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    <span className="mr-2 h-3 w-3 rounded-full" style={{ background: professional.color }} />
+                    {professional.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Select value={filterProfessional} onValueChange={setFilterProfessional}>
+              <SelectTrigger className="w-[190px]"><SelectValue placeholder="Selecionar médico" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os médicos</SelectItem>
+                <SelectItem value="unassigned">Não atribuído</SelectItem>
+                {professionals.map(p => (
+                  <SelectItem key={p.user_id} value={p.user_id}>
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full inline-block" style={{ background: p.color }} />
+                      {p.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-[190px]"><SelectValue placeholder="Todos status" /></SelectTrigger>
             <SelectContent>
@@ -1623,6 +1680,7 @@ export default function AppointmentsPage() {
           </Select>
           <Tabs value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
             <TabsList>
+              <TabsTrigger value="doctors-day">Médicos × Dia</TabsTrigger>
               <TabsTrigger value="month">Mês</TabsTrigger>
               <TabsTrigger value="week">Semana</TabsTrigger>
               <TabsTrigger value="day">Dia</TabsTrigger>
@@ -1773,6 +1831,84 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Calendar */}
+      {viewMode === 'doctors-day' && (
+        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
+          {selectedDoctors.length === 0 ? (
+            <div className="p-10 text-center">
+              <Stethoscope className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="font-medium text-foreground">Selecione pelo menos um médico</p>
+              <p className="mt-1 text-sm text-muted-foreground">Use o seletor de médicos acima.</p>
+            </div>
+          ) : (
+            <div className="grid min-w-max divide-x" style={{ gridTemplateColumns: `repeat(${selectedDoctors.length}, minmax(280px, 1fr))` }}>
+              {selectedDoctors.map((professional) => {
+                const doctorAppointments = getApptsForDay(currentDate)
+                  .filter((appointment) => appointment.professional_id === professional.user_id)
+                  .sort((a, b) => +getAppointmentStartDate(a) - +getAppointmentStartDate(b));
+                const doctorBlocks = getBlocksForDay(currentDate)
+                  .filter((block) => !block.professional_id || block.professional_id === professional.user_id);
+                return (
+                  <section key={professional.user_id} className="min-h-[480px]">
+                    <div className="sticky top-0 z-10 border-b bg-secondary/70 px-4 py-3 backdrop-blur">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ background: professional.color }} />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{professional.label}</p>
+                          <p className="text-xs text-muted-foreground">{doctorAppointments.length} agendamento(s)</p>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="w-full border-b px-4 py-2 text-left text-xs font-medium text-primary hover:bg-primary/5"
+                      onClick={() => {
+                        resetForm();
+                        setSelectedDate(format(currentDate, 'yyyy-MM-dd'));
+                        setSelectedProfessional(professional.user_id);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      + Novo agendamento para este médico
+                    </button>
+                    <div className="space-y-2 p-3">
+                      {doctorBlocks.map((block) => (
+                        <div key={block.id} className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                          <p className="font-medium">Bloqueado · {format(new Date(block.start_at), 'HH:mm')}–{format(new Date(block.end_at), 'HH:mm')}</p>
+                          <p>{block.reason || 'Indisponível'}</p>
+                        </div>
+                      ))}
+                      {doctorAppointments.length === 0 && doctorBlocks.length === 0 && (
+                        <p className="py-10 text-center text-sm text-muted-foreground">Agenda livre neste dia.</p>
+                      )}
+                      {doctorAppointments.map((appointment) => {
+                        const status = statusConfig[appointment.status];
+                        return (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            className={`w-full rounded-lg border bg-background p-3 text-left transition-shadow hover:shadow-md ${status?.style || ''}`}
+                            onClick={() => setViewAppt(appointment)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-foreground">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')}</p>
+                                <p className="truncate text-sm text-foreground">{getAppointmentDisplayName(appointment)}</p>
+                                <p className="truncate text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}</p>
+                              </div>
+                              <BrandBadge status={status?.badge || 'default'}>{status?.label || appointment.status}</BrandBadge>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {viewMode === 'month' && (
         <div className="bg-card rounded-xl shadow-card overflow-hidden animate-fade-in">
           <div className="grid grid-cols-7">
