@@ -1714,13 +1714,18 @@ export default function AppointmentsPage() {
                   <div key={`${day.toISOString()}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
                     {showCurrentTime && isCurrentDay && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />}
                     {slotAppointments.length === 0 && coveringAppointment ? (
-                      <div className="flex h-full w-full items-center rounded-sm border-x border-primary/20 bg-primary/10 px-1 text-[9px] text-primary/70" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`}>
-                        até {format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}
-                      </div>
+                      <div className="pointer-events-none h-full w-full" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`} />
                     ) : slotAppointments.length === 0 ? (
                       <button type="button" disabled={!isAvailable} className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(day, slot)} aria-label={isAvailable ? `Agendar em ${format(day, 'dd/MM')} às ${slot}` : `Indisponível em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
                     ) : slotAppointments.map((appointment) => (
-                      <button key={appointment.id} type="button" className={`w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
+                      <button
+                        key={appointment.id}
+                        type="button"
+                        className={`relative z-10 w-full overflow-hidden rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`}
+                        style={{ height: `${Math.max(44, ((appointment.duration_minutes || 60) / 30) * 48 - 4)}px` }}
+                        onClick={() => setViewAppt(appointment)}
+                        aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}
+                      >
                         <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
                         <span className="block truncate text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min</span>
                       </button>
@@ -1772,9 +1777,7 @@ export default function AppointmentsPage() {
                   {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute left-[68px] right-0 z-20 border-t border-primary/70" style={{ top: currentTimeDayOffset }}><span className="absolute -left-[52px] -top-2 text-[10px] font-medium text-primary">{format(now, 'HH:mm')}</span></div>}
                   <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
                   {slotAppointments.length === 0 && coveringAppointment ? (
-                    <div className="flex min-h-[48px] items-center rounded-lg border-x border-primary/20 bg-primary/10 px-3 text-xs text-primary/70" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`}>
-                      Continuação da consulta até {format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}
-                    </div>
+                    <div className="pointer-events-none min-h-[48px]" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`} />
                   ) : slotAppointments.length === 0 ? (
                     <button type="button" disabled={!isAvailable} className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition enabled:hover:border-dashed enabled:hover:border-primary/30 enabled:hover:bg-primary/5 enabled:hover:px-3 enabled:hover:text-primary enabled:focus-visible:border-primary/30 enabled:focus-visible:bg-primary/5 enabled:focus-visible:px-3 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-2 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(currentDate, slot)} aria-label={isAvailable ? `Agendar às ${slot}` : `Indisponível às ${slot}`}>+ Agendar</button>
                   ) : (
@@ -1782,7 +1785,13 @@ export default function AppointmentsPage() {
                       {slotAppointments.map((appointment) => {
                         const status = statusConfig[appointment.status];
                         return (
-                          <button key={appointment.id} type="button" className={`flex w-full flex-col gap-2 rounded-lg border bg-background px-3 py-2 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md sm:flex-row sm:items-center sm:justify-between ${status?.style || ''}`} onClick={() => setViewAppt(appointment)}>
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            className={`relative z-10 flex w-full flex-col gap-2 overflow-hidden rounded-lg border bg-background px-3 py-2 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md sm:flex-row sm:items-start sm:justify-between ${status?.style || ''}`}
+                            style={{ minHeight: `${Math.max(48, ((appointment.duration_minutes || 60) / 30) * 58 - 8)}px` }}
+                            onClick={() => setViewAppt(appointment)}
+                          >
                             <div className="min-w-0">
                               <p className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</p>
                               <p className="truncate text-xs text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min · {getProfessionalLabel(appointment.professional_id)}</p>
