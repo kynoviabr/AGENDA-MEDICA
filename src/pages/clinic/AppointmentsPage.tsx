@@ -10,6 +10,9 @@ import { BrandButton } from '@/components/ui/brand-button';
 import { BrandBadge, type BadgeStatus } from '@/components/ui/brand-badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin, MoreHorizontal, RefreshCw } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin, MoreHorizontal, RefreshCw, Search, CalendarRange } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
 import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
@@ -66,6 +69,8 @@ type AppointmentRow = Database['public']['Tables']['appointments']['Row'] & {
   is_batch?: boolean | null;
   patients?: {
     full_name?: string | null;
+    phone?: string | null;
+    cpf?: string | null;
     dissatisfaction_flag?: boolean | null;
     dissatisfaction_level?: string | null;
     dissatisfaction_reason?: string | null;
@@ -84,6 +89,30 @@ type WaitlistNotificationRow = Database['public']['Tables']['waitlist_notificati
 type ContractLite = Pick<Database['public']['Tables']['contracts']['Row'], 'id' | 'patient_id' | 'proposal_id' | 'status'>;
 type ProposalItemLite = Pick<Database['public']['Tables']['proposal_items']['Row'], 'proposal_id' | 'treatment_id'>;
 type SessionRecordLite = Pick<Database['public']['Tables']['session_records']['Row'], 'patient_id' | 'treatment_id'>;
+type AgendaSessionPreferences = {
+  viewMode?: ViewMode;
+  currentDate?: string;
+  locationId?: string;
+  professional?: string;
+  professionalIds?: string[];
+  status?: string;
+};
+const agendaPreferenceKey = 'agenda-med:session-preferences';
+function loadAgendaPreferences(): AgendaSessionPreferences {
+  try {
+    return JSON.parse(sessionStorage.getItem(agendaPreferenceKey) || '{}') as AgendaSessionPreferences;
+  } catch {
+    return {};
+  }
+}
+const halfHourSlots = Array.from({ length: 22 }, (_, index) => {
+  const minutes = 8 * 60 + index * 30;
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+});
+function halfHourKey(date: Date) {
+  const hour = String(date.getHours()).padStart(2, '0');
+  return `${hour}:${date.getMinutes() < 30 ? '00' : '30'}`;
+}
 const weekDays = [
   { value: 0, label: 'Domingo' },
   { value: 1, label: 'Segunda-feira' },
@@ -150,8 +179,9 @@ export default function AppointmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const sessionPreferences = useMemo(loadAgendaPreferences, []);
+  const [currentDate, setCurrentDate] = useState(() => sessionPreferences.currentDate ? new Date(sessionPreferences.currentDate) : new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>(sessionPreferences.viewMode || 'week');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewAppt, setViewAppt] = useState<AppointmentRow | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
@@ -161,10 +191,12 @@ export default function AppointmentsPage() {
   const [selectedLead, setSelectedLead] = useState('');
   const [selectedTreatment, setSelectedTreatment] = useState('');
   const [selectedProfessional, setSelectedProfessional] = useState('');
-  const [selectedLocationId, setSelectedLocationId] = useState('');
-  const [filterProfessional, setFilterProfessional] = useState('all');
-  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedLocationId, setSelectedLocationId] = useState(sessionPreferences.locationId || '');
+  const [filterProfessional, setFilterProfessional] = useState(sessionPreferences.professional || 'all');
+  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>(sessionPreferences.professionalIds || []);
+  const [filterStatus, setFilterStatus] = useState(sessionPreferences.status || 'all');
+  const [agendaSearch, setAgendaSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [createFormError, setCreateFormError] = useState('');
   const [duration, setDuration] = useState('60');
   const [notes, setNotes] = useState('');
@@ -225,8 +257,20 @@ export default function AppointmentsPage() {
     enabled: !!clinicId,
   });
   useEffect(() => {
-    if (!selectedLocationId && locations.length) setSelectedLocationId(locations.find(location => location.is_primary)?.id || locations[0].id);
+    if (locations.length && !locations.some((location) => location.id === selectedLocationId)) {
+      setSelectedLocationId(locations.find(location => location.is_primary)?.id || locations[0].id);
+    }
   }, [locations, selectedLocationId]);
+  useEffect(() => {
+    sessionStorage.setItem(agendaPreferenceKey, JSON.stringify({
+      viewMode,
+      currentDate: currentDate.toISOString(),
+      locationId: selectedLocationId,
+      professional: filterProfessional,
+      professionalIds: selectedDoctorIds,
+      status: filterStatus,
+    } satisfies AgendaSessionPreferences));
+  }, [viewMode, currentDate, selectedLocationId, filterProfessional, selectedDoctorIds, filterStatus]);
 
   // Get date range based on view
   const { rangeStart, rangeEnd, calendarDays } = useMemo(() => {
@@ -250,7 +294,7 @@ export default function AppointmentsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('appointments')
-        .select('*, patients(full_name, dissatisfaction_flag, dissatisfaction_level, dissatisfaction_reason), leads!appointments_lead_id_fkey(full_name, phone), treatments(name)')
+        .select('*, patients(full_name, phone, cpf, dissatisfaction_flag, dissatisfaction_level, dissatisfaction_reason), leads!appointments_lead_id_fkey(full_name, phone), treatments(name)')
         .eq('clinic_id', clinicId!)
         .eq('location_id', selectedLocationId)
         .gte('scheduled_at', rangeStart.toISOString())
@@ -484,6 +528,7 @@ export default function AppointmentsPage() {
     setRescheduleProfessional(appointment.professional_id || 'unassigned');
     setRescheduleNotes(appointment.notes || '');
     setExceptionModal({ mode, appointment });
+    setViewAppt(null);
   };
 
   useEffect(() => {
@@ -663,6 +708,37 @@ export default function AppointmentsPage() {
     }
     return filtered;
   }, [appointments, filterProfessional, filterStatus, selectedDoctorIds, viewMode]);
+
+  const searchResults = useMemo(() => {
+    const term = agendaSearch.trim().toLocaleLowerCase('pt-BR');
+    if (term.length < 2) return [];
+    return appointments.filter((appointment) => {
+      const patient = appointment.patients as { full_name?: string | null; phone?: string | null; cpf?: string | null } | null;
+      const lead = appointment.leads as { full_name?: string | null; phone?: string | null } | null;
+      const treatment = appointment.treatments as { name?: string | null } | null;
+      const professionalName = professionals.find((professional) => professional.id === appointment.professional_id)?.label;
+      return [patient?.full_name, patient?.phone, patient?.cpf, lead?.full_name, lead?.phone, treatment?.name,
+        professionalName, statusConfig[appointment.status]?.label]
+        .some((value) => String(value || '').toLocaleLowerCase('pt-BR').includes(term));
+    }).slice(0, 8);
+  }, [agendaSearch, appointments, professionals]);
+
+  const openNewAppointmentAt = (day: Date, time: string, professionalId?: string | null) => {
+    resetForm();
+    setSelectedDate(format(day, 'yyyy-MM-dd'));
+    setSelectedTime(time);
+    if (professionalId) setSelectedProfessional(professionalId);
+    else if (filterProfessional !== 'all' && filterProfessional !== 'unassigned') setSelectedProfessional(filterProfessional);
+    setDialogOpen(true);
+  };
+
+  const selectSearchResult = (appointment: AppointmentRow) => {
+    setCurrentDate(getAppointmentStartDate(appointment));
+    setViewMode('day');
+    setViewAppt(appointment);
+    setAgendaSearch('');
+    setSearchOpen(false);
+  };
 
   const operationalSummary = useMemo(() => {
     const todayAppointments = filteredAppointments.filter((appointment) =>
@@ -1301,8 +1377,8 @@ export default function AppointmentsPage() {
   const headerLabel = viewMode === 'month'
     ? format(currentDate, 'MMMM yyyy', { locale: ptBR })
     : viewMode === 'week'
-    ? `${format(rangeStart, 'dd/MM', { locale: ptBR })} - ${format(rangeEnd, 'dd/MM/yyyy', { locale: ptBR })}`
-    : format(currentDate, "EEEE, dd 'de' MMMM", { locale: ptBR });
+    ? `${format(rangeStart, 'd', { locale: ptBR })} – ${format(rangeEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
+    : format(currentDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
 
   return (
     <div>
@@ -1321,7 +1397,7 @@ export default function AppointmentsPage() {
 
       <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
         <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-          <SelectTrigger className="h-10 w-[210px] border-0 bg-secondary/60 shadow-none"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
+          <SelectTrigger className="h-10 w-[220px] border-0 bg-secondary/60 shadow-none" aria-label="Selecionar unidade"><MapPin className="mr-2 h-4 w-4"/><span className="mr-1 text-xs text-muted-foreground">Unidade:</span><SelectValue placeholder="Selecionar" /></SelectTrigger>
           <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
         </Select>
         <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setAvailabilityDialogOpen(true)}>
@@ -1331,7 +1407,7 @@ export default function AppointmentsPage() {
           <Lock className="h-4 w-4" /> Bloqueios{appointmentBlocks.length > 0 ? ` (${appointmentBlocks.length})` : ''}
         </BrandButton>
         <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => { resetWaitlistForm(); setWaitlistDialogOpen(true); }}>
-          <BellRing className="h-4 w-4" /> Lista de espera{waitlistEntries.length > 0 ? ` (${waitlistEntries.length})` : ''}
+          <BellRing className="h-4 w-4" /> Lista de espera{waitlistEntries.length > 0 ? ` · ${waitlistEntries.length}` : ''}
         </BrandButton>
         <div className="ml-auto">
           <DropdownMenu>
@@ -1343,10 +1419,10 @@ export default function AppointmentsPage() {
             <DropdownMenuContent align="end" className="w-64">
               <DropdownMenuLabel>Operações administrativas</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => sendReminderQueueMutation.mutate()}>Preparar fila de lembretes</button>
-              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => dispatchReminderMutation.mutate()}>Disparar lembretes WhatsApp</button>
-              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => generateDailySummaryMutation.mutate()}>Gerar resumo diário</button>
-              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => runAgendaJobsMutation.mutate('manual')}>Executar jobs da agenda</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => sendReminderQueueMutation.mutate()}>Lembretes de consultas</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => dispatchReminderMutation.mutate()}>Confirmações via WhatsApp</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => generateDailySummaryMutation.mutate()}>Resumo diário</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => runAgendaJobsMutation.mutate('manual')}>Automação de encaixe</button>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1362,7 +1438,28 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Controls */}
-      <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm xl:flex-row xl:items-center xl:justify-between">
+        <Popover open={searchOpen && agendaSearch.trim().length >= 2} onOpenChange={setSearchOpen}>
+          <PopoverTrigger asChild>
+            <div className="relative w-full xl:w-[270px]">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input value={agendaSearch} onFocus={() => setSearchOpen(true)} onChange={(event) => { setAgendaSearch(event.target.value); setSearchOpen(true); }} className="h-9 pl-9" placeholder="Buscar paciente ou agendamento..." aria-label="Buscar paciente ou agendamento" />
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-[360px] max-w-[calc(100vw-2rem)] p-1" align="start" onOpenAutoFocus={(event) => event.preventDefault()}>
+            {searchResults.length === 0 ? <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nenhum agendamento encontrado neste período.</p> : (
+              <div className="max-h-80 overflow-y-auto">
+                {searchResults.map((appointment) => (
+                  <button key={appointment.id} type="button" className="w-full rounded-lg px-3 py-2.5 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => selectSearchResult(appointment)}>
+                    <p className="text-sm font-semibold">{getAppointmentDisplayName(appointment)}</p>
+                    <p className="text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {getProfessionalLabel(appointment.professional_id)}</p>
+                    <p className="mt-1 text-xs text-primary">{format(getAppointmentStartDate(appointment), "dd/MM/yyyy '·' HH:mm")}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
         <div className="flex items-center gap-1">
           <button aria-label="Período anterior" onClick={() => navigate_(-1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronLeft className="h-5 w-5" /></button>
           <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
@@ -1423,9 +1520,9 @@ export default function AppointmentsPage() {
             </Select>
           )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="h-9 w-[165px]"><SelectValue placeholder="Todos status" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[165px]"><SelectValue placeholder="Todos os status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos status</SelectItem>
+              <SelectItem value="all">Todos os status</SelectItem>
               <SelectItem value="scheduled">Agendado</SelectItem>
               <SelectItem value="confirmed">Confirmado</SelectItem>
               <SelectItem value="in_progress">Em andamento</SelectItem>
@@ -1440,7 +1537,7 @@ export default function AppointmentsPage() {
               <TabsTrigger value="day">Dia</TabsTrigger>
               <TabsTrigger value="week">Semana</TabsTrigger>
               <TabsTrigger value="month">Mês</TabsTrigger>
-              <TabsTrigger value="doctors-day">Equipe/dia</TabsTrigger>
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><TabsTrigger value="doctors-day">Equipe</TabsTrigger></TooltipTrigger><TooltipContent>Visualizar agendas dos profissionais lado a lado.</TooltipContent></Tooltip></TooltipProvider>
             </TabsList>
           </Tabs>
         </div>
@@ -1464,12 +1561,11 @@ export default function AppointmentsPage() {
         </div>
       )}
       {!appointmentsLoading && !appointmentsError && filteredAppointments.length === 0 && (
-        <div className="mb-3 flex flex-col items-center justify-center rounded-xl border border-dashed bg-card/80 px-6 py-5 text-center sm:flex-row sm:justify-between sm:text-left">
+        <div className="mb-2 rounded-lg border border-dashed bg-card/70 px-4 py-2.5 text-center">
           <div>
             <p className="text-sm font-medium text-foreground">Nenhum agendamento neste período.</p>
             <p className="text-xs text-muted-foreground">A grade continua disponível para consulta e novos horários.</p>
           </div>
-          <BrandButton size="sm" className="mt-3 sm:mt-0" onClick={() => { resetForm(); setSelectedDate(format(currentDate, 'yyyy-MM-dd')); setDialogOpen(true); }}><Plus className="h-4 w-4" /> Novo agendamento</BrandButton>
         </div>
       )}
       {!appointmentsLoading && !appointmentsError && viewMode === 'doctors-day' && (
@@ -1616,30 +1712,36 @@ export default function AppointmentsPage() {
                     <div className="text-xs text-muted-foreground">{dayNames[i]}</div>
                     <div className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</div>
                   </div>
-                  <div className="p-1 space-y-1">
+                  <div className="border-b p-1">
                     {dayBlocks.length > 0 && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        {dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''} neste dia
+                        <Lock className="mr-1 inline h-3 w-3" /> {dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''}
                       </div>
                     )}
-                    {dayAppts.map((a) => (
-                      <div
-                        key={a.id}
-                        className={`rounded p-2 text-xs text-white cursor-pointer ${statusConfig[a.status]?.style || ''}`}
-                        style={{ backgroundColor: getProfColor(a.professional_id) }}
-                        onClick={() => setViewAppt(a)}
-                      >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <div className="font-semibold">{format(getAppointmentStartDate(a), 'HH:mm')}</div>
-                          <div className="flex gap-1">
-                            {a.appointment_type === 'evaluation' && <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px]">Avaliação</span>}
-                            {a.is_batch && <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px]">Lote</span>}
-                          </div>
+                  </div>
+                  <div>
+                    {halfHourSlots.map((slot) => {
+                      const slotAppointments = dayAppts.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                      return (
+                        <div key={slot} className="group relative min-h-[48px] border-b border-dashed px-1 py-0.5">
+                          <span className="absolute left-1 top-1 text-[9px] text-muted-foreground/70">{slot}</span>
+                          {slotAppointments.length === 0 ? (
+                            <button type="button" className="h-full min-h-[43px] w-full rounded text-[10px] text-transparent transition-colors hover:bg-primary/5 hover:text-primary focus-visible:bg-primary/5 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(day, slot)} aria-label={`Agendar em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
+                          ) : slotAppointments.map((appointment) => (
+                            <button key={appointment.id} type="button" className={`mt-3 w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
+                              <span className="block font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')}</span>
+                              <span className="block truncate font-medium">{getAppointmentDisplayName(appointment)}</span>
+                              <span className="block truncate text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {statusConfig[appointment.status]?.label}</span>
+                            </button>
+                          ))}
                         </div>
-                        <div className="truncate">{getAppointmentDisplayName(a)}</div>
-                        <div className="truncate opacity-80">{(a.treatments as { name?: string | null } | null)?.name}</div>
-                        <div className="truncate opacity-80">{getProfessionalLabel(a.professional_id)}</div>
-                      </div>
+                      );
+                    })}
+                    {dayAppts.filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
+                      <button key={appointment.id} type="button" className="m-1 w-[calc(100%-0.5rem)] rounded-md border bg-background p-2 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                        <span className="block font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="text-muted-foreground">Fora da grade operacional</span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1663,58 +1765,40 @@ export default function AppointmentsPage() {
               </div>
             </div>
           )}
-          {getApptsForDay(currentDate).length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Nenhum agendamento neste dia</p>
-          ) : (
-            <div className="space-y-3">
-              {getApptsForDay(currentDate).map((a) => {
-                const sc = statusConfig[a.status];
-                return (
-                  <div
-                    key={a.id}
-                    className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${sc?.style || ''}`}
-                    onClick={() => setViewAppt(a)}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-foreground">{getAppointmentDisplayName(a)}</p>
-                          {a.appointment_type === 'evaluation' && (
-                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                              Avaliação
-                            </span>
-                          )}
-                          {a.is_batch && (
-                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                              Sessão em lote
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{(a.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}</p>
-                        <p className="text-xs text-muted-foreground">{getProfessionalLabel(a.professional_id)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-foreground">{format(getAppointmentStartDate(a), 'HH:mm')} - {format(getAppointmentEndDate(a), 'HH:mm')}</p>
-                        <div className="mt-1 flex items-center justify-end gap-2">
-                          <BrandBadge status={sc?.badge || 'default'}>{sc?.label || a.status}</BrandBadge>
-                          <BrandButton
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setViewAppt(a);
-                            }}
-                          >
-                            Ver
-                          </BrandButton>
-                        </div>
-                      </div>
+          <div className="divide-y">
+            {halfHourSlots.map((slot) => {
+              const slotAppointments = getApptsForDay(currentDate).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+              return (
+                <div key={slot} className="group grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1">
+                  <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
+                  {slotAppointments.length === 0 ? (
+                    <button type="button" className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition hover:border-dashed hover:border-primary/30 hover:bg-primary/5 hover:px-3 hover:text-primary focus-visible:border-primary/30 focus-visible:bg-primary/5 focus-visible:px-3 focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => openNewAppointmentAt(currentDate, slot)}>+ Agendar</button>
+                  ) : (
+                    <div className="space-y-1">
+                      {slotAppointments.map((appointment) => {
+                        const status = statusConfig[appointment.status];
+                        return (
+                          <button key={appointment.id} type="button" className={`flex w-full flex-col gap-2 rounded-lg border bg-background px-3 py-2 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md sm:flex-row sm:items-center sm:justify-between ${status?.style || ''}`} onClick={() => setViewAppt(appointment)}>
+                            <div className="min-w-0">
+                              <p className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</p>
+                              <p className="truncate text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {getProfessionalLabel(appointment.professional_id)}</p>
+                            </div>
+                            <BrandBadge status={status?.badge || 'default'}>{status?.label || appointment.status}</BrandBadge>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  )}
+                </div>
+              );
+            })}
+            {getApptsForDay(currentDate).filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
+              <button key={appointment.id} type="button" className="mt-2 w-full rounded-lg border bg-background p-3 text-left shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                <span className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                <span className="ml-2 text-xs text-muted-foreground">Fora da grade operacional</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
         </main>
@@ -1900,14 +1984,15 @@ export default function AppointmentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* View appointment */}
-      <Dialog open={!!viewAppt} onOpenChange={() => setViewAppt(null)}>
-        <DialogContent className="max-w-md">
+      {/* Appointment quick view */}
+      <Sheet open={!!viewAppt} onOpenChange={(open) => !open && setViewAppt(null)}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
           {viewAppt && (
             <>
-              <DialogHeader>
-                <DialogTitle>Agendamento</DialogTitle>
-              </DialogHeader>
+              <SheetHeader>
+                <SheetTitle>{getAppointmentDisplayName(viewAppt)}</SheetTitle>
+                <SheetDescription>{(viewAppt.treatments as { name?: string | null } | null)?.name || (viewAppt.appointment_type === 'evaluation' ? 'Avaliação' : 'Atendimento')}</SheetDescription>
+              </SheetHeader>
               <div className="space-y-4 mt-4">
                 {(() => {
                   const p = getSelectedPatientData(viewAppt.patient_id);
@@ -1926,7 +2011,11 @@ export default function AppointmentsPage() {
                   <div className="flex justify-between"><span className="text-muted-foreground">Paciente:</span><span className="font-medium">{getAppointmentDisplayName(viewAppt)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Tipo:</span><span className="font-medium">{viewAppt.appointment_type === 'evaluation' ? 'Avaliação' : 'Sessão'}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Profissional:</span><span className="font-medium">{getProfessionalLabel(viewAppt.professional_id)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Unidade:</span><span className="font-medium">{locations.find((location) => location.id === viewAppt.location_id)?.name || 'Unidade atual'}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Tratamento:</span><span className="font-medium">{(viewAppt.treatments as { name?: string | null } | null)?.name || '—'}</span></div>
+                  {(viewAppt.patients as { phone?: string | null } | null)?.phone && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">Contato:</span><span className="font-medium">{(viewAppt.patients as { phone?: string | null } | null)?.phone}</span></div>
+                  )}
                   {(viewAppt.leads as { phone?: string | null } | null)?.phone && (
                     <div className="flex justify-between"><span className="text-muted-foreground">Contato do lead:</span><span className="font-medium">{(viewAppt.leads as { phone?: string | null } | null)?.phone}</span></div>
                   )}
@@ -1940,7 +2029,7 @@ export default function AppointmentsPage() {
                     <Label>Reatribuir profissional</Label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Select value={reassignProfessional} onValueChange={setReassignProfessional}>
-                        <SelectTrigger className="sm:flex-1">
+                        <SelectTrigger id="appointment-professional-editor" className="sm:flex-1">
                           <SelectValue placeholder="Selecionar profissional" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2003,10 +2092,15 @@ export default function AppointmentsPage() {
                   {canAdjustAppointment && (
                     <>
                       <BrandButton size="sm" variant="outline" onClick={() => openExceptionModal('reschedule', viewAppt)}>
-                        Remarcar agendamento
+                        <CalendarRange className="h-4 w-4" /> Remarcar
                       </BrandButton>
+                      {!isProfessional && (
+                        <BrandButton size="sm" variant="outline" onClick={() => document.getElementById('appointment-professional-editor')?.focus()}>
+                          Editar responsável
+                        </BrandButton>
+                      )}
                       <BrandButton size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => openExceptionModal('cancel', viewAppt)}>
-                        <X className="w-4 h-4" /> Cancelar agendamento
+                        <X className="w-4 h-4" /> Cancelar
                       </BrandButton>
                       <BrandButton size="sm" variant="outline" onClick={() => openExceptionModal('no_show', viewAppt)}>
                         <AlertTriangle className="w-4 h-4" /> Registrar não comparecimento
@@ -2028,8 +2122,8 @@ export default function AppointmentsPage() {
               </div>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={!!exceptionModal} onOpenChange={() => setExceptionModal(null)}>
         <DialogContent className="max-w-lg">
