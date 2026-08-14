@@ -30,6 +30,12 @@ A relação muitos-para-muitos é armazenada em `professional_health_insurances`
 
 Isso permite cadastrar e agendar profissionais sem criar contas de login. A migration `20260814175403_phase2_professional_identity.sql` converte referências legadas baseadas em `auth.users.id`, interrompe a execução se encontrar uma referência sem correspondência e valida que o profissional pertence à mesma clínica do registro de agenda.
 
+## Unidades de atendimento
+
+Clínicas podem manter uma ou várias unidades em **Configurações → Unidades** e vincular cada profissional aos locais onde atende. A agenda é filtrada por unidade e grava `location_id` nas consultas, disponibilidades e bloqueios. Clínicas existentes receberam automaticamente uma **Unidade Principal**, construída a partir do endereço já cadastrado, e clínicas novas recebem a mesma estrutura por trigger.
+
+As relações usam `clinic_id`, RLS e validações no banco para impedir que uma consulta associe unidade ou profissional pertencente a outra clínica. Um profissional só pode receber consultas e disponibilidades em unidades às quais esteja vinculado e ativo.
+
 ## WhatsApp com IA — funcionalidade central
 
 O WhatsApp com IA faz parte do núcleo do produto e **não está entre os módulos MVP desativados**. A arquitetura é multi-clínica:

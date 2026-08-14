@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare, HeartHandshake } from 'lucide-react';
+import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare, HeartHandshake, MapPin } from 'lucide-react';
 import CategoriesTab from '@/components/settings/CategoriesTab';
 import ProfessionalsTab from '@/components/settings/ProfessionalsTab';
 import RolesTab from '@/components/settings/RolesTab';
@@ -22,6 +22,7 @@ import PatientAppAccessTab from '@/components/settings/PatientAppAccessTab';
 import AccessGroupsTab from '@/components/settings/AccessGroupsTab';
 import WhatsAppAiSettingsTab from '@/components/settings/WhatsAppAiSettingsTab';
 import HealthcareSettingsTab from '@/components/settings/HealthcareSettingsTab';
+import LocationsTab from '@/components/settings/LocationsTab';
 import TreatmentsPage from '@/pages/clinic/TreatmentsPage';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -224,6 +225,7 @@ export default function SettingsPage() {
           <TabsTrigger value="categories"><Tags className="w-4 h-4 mr-1" />Categorias</TabsTrigger>
           <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
+          <TabsTrigger value="locations"><MapPin className="w-4 h-4 mr-1" />Unidades</TabsTrigger>
           <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
           <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Tratamentos</TabsTrigger>
           <TabsTrigger value="whatsapp-ai"><MessageSquare className="w-4 h-4 mr-1" />WhatsApp IA</TabsTrigger>
@@ -509,6 +511,8 @@ export default function SettingsPage() {
         <TabsContent value="professionals">
           <ProfessionalsTab />
         </TabsContent>
+
+        <TabsContent value="locations"><LocationsTab /></TabsContent>
 
         <TabsContent value="healthcare">
           <HealthcareSettingsTab />

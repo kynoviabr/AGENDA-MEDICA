@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
 import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
@@ -157,6 +157,7 @@ export default function AppointmentsPage() {
   const [selectedLead, setSelectedLead] = useState('');
   const [selectedTreatment, setSelectedTreatment] = useState('');
   const [selectedProfessional, setSelectedProfessional] = useState('');
+  const [selectedLocationId, setSelectedLocationId] = useState('');
   const [filterProfessional, setFilterProfessional] = useState('all');
   const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState('all');
@@ -211,6 +212,19 @@ export default function AppointmentsPage() {
 
   const isProfessional = role === 'professional';
 
+  const { data: locations = [] } = useQuery({
+    queryKey: ['clinic-locations', clinicId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('clinic_locations').select('id,name,is_primary,active').eq('clinic_id', clinicId!).eq('active', true).order('is_primary', { ascending: false }).order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicId,
+  });
+  useEffect(() => {
+    if (!selectedLocationId && locations.length) setSelectedLocationId(locations.find(location => location.is_primary)?.id || locations[0].id);
+  }, [locations, selectedLocationId]);
+
   // Get date range based on view
   const { rangeStart, rangeEnd, calendarDays } = useMemo(() => {
     if (viewMode === 'month') {
@@ -235,13 +249,14 @@ export default function AppointmentsPage() {
         .from('appointments')
         .select('*, patients(full_name, dissatisfaction_flag, dissatisfaction_level, dissatisfaction_reason), leads!appointments_lead_id_fkey(full_name, phone), treatments(name)')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .gte('scheduled_at', rangeStart.toISOString())
         .lte('scheduled_at', rangeEnd.toISOString())
         .order('scheduled_at');
       if (error) throw error;
       return (data || []) as AppointmentRow[];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
 
   const selectedPatientLookupId = selectedPatient || prefillPatientId || '';
@@ -321,14 +336,24 @@ export default function AppointmentsPage() {
     enabled: !!clinicId,
   });
 
-  const { professionals: agendaProfessionals, currentProfessionalId } = useAgendaProfessionals(clinicId, user?.id);
+  const { professionals: agendaProfessionals } = useAgendaProfessionals(clinicId, user?.id);
+  const { data: locationProfessionalIds = [] } = useQuery({
+    queryKey: ['agenda-location-professionals', clinicId, selectedLocationId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('professional_locations').select('professional_id').eq('clinic_id', clinicId!).eq('location_id', selectedLocationId).eq('active', true);
+      if (error) throw error;
+      return (data || []).map(link => link.professional_id as string);
+    },
+    enabled: !!clinicId && !!selectedLocationId,
+  });
   const professionals = useMemo(
-    () => agendaProfessionals.map((professional, index) => ({
+    () => agendaProfessionals.filter(professional => locationProfessionalIds.includes(professional.id)).map((professional, index) => ({
       ...professional,
       color: professionalColors[index % professionalColors.length],
     })),
-    [agendaProfessionals],
+    [agendaProfessionals, locationProfessionalIds],
   );
+  const currentProfessionalId = professionals.find(professional => professional.user_id === user?.id)?.id || null;
   const professionalIdsKey = professionals.map((professional) => professional.id).join(',');
 
   useEffect(() => {
@@ -352,13 +377,14 @@ export default function AppointmentsPage() {
       const { data, error } = await supabase.from('professional_availability')
         .select('*')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .eq('is_active', true)
         .order('professional_id')
         .order('day_of_week');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
 
   const { data: appointmentBlocks = [] } = useQuery({
@@ -369,13 +395,14 @@ export default function AppointmentsPage() {
       const { data, error } = await supabase.from('appointment_blocks')
         .select('*')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .gte('start_at', from)
         .lte('end_at', to)
         .order('start_at');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
   const { data: waitlistEntries = [] } = useQuery({
     queryKey: ['appointment-waitlist', clinicId],
@@ -827,6 +854,7 @@ export default function AppointmentsPage() {
       }
       const payload: Record<string, unknown> = {
         clinic_id: clinicId!,
+        location_id: selectedLocationId,
         patient_id: appointmentType === 'session' ? selectedPatient : null,
         lead_id: appointmentType === 'evaluation' ? selectedLead : null,
         treatment_id: selectedTreatment || null,
@@ -975,6 +1003,7 @@ export default function AppointmentsPage() {
       const { data: newAppointment, error: createError } = await supabase.from('appointments')
         .insert({
           clinic_id: clinicId,
+          location_id: appointment.location_id || selectedLocationId,
           patient_id: appointment.patient_id,
           lead_id: appointment.lead_id,
           treatment_id: appointment.treatment_id,
@@ -1069,6 +1098,7 @@ export default function AppointmentsPage() {
       const { error: deleteError } = await supabase.from('professional_availability')
         .delete()
         .eq('clinic_id', clinicId)
+        .eq('location_id', selectedLocationId)
         .eq('professional_id', availabilityProfessional);
       if (deleteError) throw deleteError;
 
@@ -1077,6 +1107,7 @@ export default function AppointmentsPage() {
         .filter(({ config }) => config?.isActive)
         .map(({ day, config }) => ({
           clinic_id: clinicId,
+          location_id: selectedLocationId,
           professional_id: availabilityProfessional,
           day_of_week: day.value,
           start_time: config.start,
@@ -1111,6 +1142,7 @@ export default function AppointmentsPage() {
 
       const { error } = await supabase.from('appointment_blocks').insert({
         clinic_id: clinicId,
+        location_id: selectedLocationId,
         professional_id: blockProfessional === 'all' ? null : blockProfessional,
         start_at: startAt.toISOString(),
         end_at: endAt.toISOString(),
@@ -1245,6 +1277,7 @@ export default function AppointmentsPage() {
 
       const appointmentPayload: Record<string, unknown> = {
         clinic_id: clinicId,
+        location_id: selectedLocationId,
         patient_id: waitlist.patient_id,
         lead_id: waitlist.lead_id,
         treatment_id: waitlist.treatment_id,
@@ -1483,6 +1516,10 @@ export default function AppointmentsPage() {
     <div>
       <PageHeader title="Agenda" description="Gerencie os agendamentos da clínica">
         <div className="flex flex-wrap gap-2">
+          <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+            <SelectTrigger className="w-52"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
+            <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
+          </Select>
           <>
             <BrandButton variant="outline" onClick={() => setAvailabilityDialogOpen(true)}>
               <CalendarCog className="w-4 h-4" /> Disponibilidade
