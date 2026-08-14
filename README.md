@@ -20,6 +20,8 @@ O plano técnico para operar de 100 a 1.000 clínicas está em [`docs/ESCALABILI
 
 O módulo **Convênios** permite cadastrar, por clínica, o nome do plano, registro ANS, contatos, orientações de autorização, situação e os profissionais que o atendem.
 
+Clínicas novas recebem automaticamente uma base editável com dez marcas comuns: Unimed, Bradesco Saúde, SulAmérica Saúde, Amil, Hapvida, NotreDame Intermédica, Porto Saúde, Prevent Senior, Care Plus e CASSI. O registro ANS não é preenchido automaticamente, pois uma marca pode operar por diferentes pessoas jurídicas e registros regionais; a clínica deve informar o código correspondente ao próprio contrato.
+
 A relação muitos-para-muitos é armazenada em `professional_health_insurances`, sempre vinculada à mesma clínica do convênio e do profissional. Essa estrutura foi criada para que o atendimento com IA possa, em uma etapa posterior, consultar com segurança quais profissionais estão disponíveis para o convênio informado pelo paciente. A estrutura está pronta; a consulta ainda precisa ser conectada ao fluxo conversacional da IA antes de ser considerada uma resposta automatizada ativa.
 
 ## WhatsApp com IA — funcionalidade central
