@@ -114,6 +114,12 @@ Esses módulos poderão ser avaliados e reativados futuramente. A reativação n
 
 As rotas desativadas estão documentadas diretamente em `src/App.tsx`. Os itens de navegação foram removidos de `src/components/layouts/ClinicSidebar.tsx` e `src/components/layouts/PatientPortalLayout.tsx`.
 
+## Motor transacional da agenda — Fase 5
+
+A disponibilidade e a prevenção de dupla reserva têm o PostgreSQL como autoridade final. Criação, remarcação, cancelamento, reatribuição de profissional e confirmação de vagas da lista de espera utilizam RPCs transacionais. Uma constraint temporal impede horários ativos sobrepostos para o mesmo profissional, inclusive sob concorrência e entre unidades.
+
+A arquitetura, os status que ocupam horário, a prioridade de duração, timezone, códigos de erro e APIs estão documentados em [`docs/FASE_5_MOTOR_TRANSACIONAL_AGENDA.md`](docs/FASE_5_MOTOR_TRANSACIONAL_AGENDA.md).
+
 ## E2E rápido (Playwright)
 
 1. Crie o arquivo de variáveis de E2E:

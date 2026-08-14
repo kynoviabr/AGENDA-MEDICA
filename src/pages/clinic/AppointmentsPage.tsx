@@ -29,6 +29,12 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/types';
+import { getAgendaErrorMessage } from '@/lib/agenda/errors';
+
+type AgendaRpcError = { message: string; code?: string; details?: string; hint?: string };
+type AgendaRpcResult<T> = { data: T | null; error: AgendaRpcError | null };
+const callAgendaRpc = <T,>(name: string, args: Record<string, unknown>) =>
+  (supabase.rpc as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<AgendaRpcResult<T>>)(name, args);
 
 const professionalColors = [
   'hsl(var(--primary))', 'hsl(210 80% 50%)', 'hsl(280 60% 50%)',
@@ -515,71 +521,6 @@ export default function AppointmentsPage() {
     if (!professionalId) return 'Não atribuído';
     return professionals.find((professional) => professional.id === professionalId)?.label || 'Profissional';
   };
-  const hasAvailabilityWindow = (professionalId: string | null, startTime: Date, endTime: Date) => {
-    if (!professionalId) return true;
-    const dayOfWeek = startTime.getDay();
-    const slots = availability.filter((slot) => slot.professional_id === professionalId && slot.day_of_week === dayOfWeek && slot.is_active);
-    if (slots.length === 0) return false;
-
-    const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
-    const endMinutes = endTime.getHours() * 60 + endTime.getMinutes();
-    return slots.some((slot) => {
-      const [startHour, startMinute] = String(slot.start_time).slice(0, 5).split(':').map(Number);
-      const [endHour, endMinute] = String(slot.end_time).slice(0, 5).split(':').map(Number);
-      const slotStartMinutes = startHour * 60 + startMinute;
-      const slotEndMinutes = endHour * 60 + endMinute;
-      return startMinutes >= slotStartMinutes && endMinutes <= slotEndMinutes;
-    });
-  };
-  const assertNoSchedulingConflicts = async ({
-    professionalId,
-    startTime,
-    endTime,
-    ignoreAppointmentId,
-  }: {
-    professionalId: string | null;
-    startTime: Date;
-    endTime: Date;
-    ignoreAppointmentId?: string;
-  }) => {
-    if (!clinicId) return;
-
-    let appointmentsQuery = supabase.from('appointments')
-      .select('id, start_time, end_time, status, professional_id')
-      .eq('clinic_id', clinicId)
-      .lt('start_time', endTime.toISOString())
-      .gt('end_time', startTime.toISOString())
-      .not('status', 'in', '(cancelled,rescheduled)');
-
-    if (professionalId) {
-      appointmentsQuery = appointmentsQuery.eq('professional_id', professionalId);
-    }
-
-    const { data: conflictingAppointments, error: appointmentError } = await appointmentsQuery;
-    if (appointmentError) throw appointmentError;
-
-    const realConflict = (conflictingAppointments || []).some((appointment) => appointment.id !== ignoreAppointmentId);
-    if (realConflict) {
-      throw new Error('Já existe outro agendamento para esse horário.');
-    }
-
-    let blocksQuery = supabase.from('appointment_blocks')
-      .select('id, professional_id, start_at, end_at')
-      .eq('clinic_id', clinicId)
-      .lt('start_at', endTime.toISOString())
-      .gt('end_at', startTime.toISOString());
-
-    if (professionalId) {
-      blocksQuery = blocksQuery.or(`professional_id.is.null,professional_id.eq.${professionalId}`);
-    }
-
-    const { data: conflictingBlocks, error: blockError } = await blocksQuery;
-    if (blockError) throw blockError;
-    if ((conflictingBlocks || []).length > 0) {
-      throw new Error('Existe um bloqueio para esse horário.');
-    }
-  };
-
   const openExceptionModal = (mode: 'cancel' | 'no_show' | 'reschedule', appointment: Record<string, unknown> & { id: string; clinic_id: string; status: string; appointment_type?: string | null; lead_id?: string | null }) => {
     setExceptionReason('');
     setRescheduleDate(format(getAppointmentStartDate(appointment), 'yyyy-MM-dd'));
@@ -831,16 +772,10 @@ export default function AppointmentsPage() {
     mutationFn: async () => {
       setCreateFormError('');
       const startTime = new Date(`${selectedDate}T${selectedTime}:00`);
-      const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
       const profId = selectedProfessional || (isProfessional ? currentProfessionalId : null);
       if (!profId) {
         throw new Error('Selecione um profissional para este agendamento.');
       }
-      if (profId && !hasAvailabilityWindow(profId, startTime, endTime)) {
-        throw new Error('Esse horário está fora da disponibilidade semanal do profissional.');
-      }
-      await assertNoSchedulingConflicts({ professionalId: profId, startTime, endTime });
-      const lead = appointmentType === 'evaluation' ? getSelectedLeadData(selectedLead) : null;
       if (appointmentType === 'session') {
         if (!selectedTreatment) throw new Error('Selecione um tratamento.');
         const isAllowed = sessionTreatmentOptions.some((item) => item.id === selectedTreatment);
@@ -852,27 +787,22 @@ export default function AppointmentsPage() {
           throw new Error('Este tratamento já foi finalizado (saldo 0).');
         }
       }
-      const payload: Record<string, unknown> = {
-        clinic_id: clinicId!,
-        location_id: selectedLocationId,
-        patient_id: appointmentType === 'session' ? selectedPatient : null,
-        lead_id: appointmentType === 'evaluation' ? selectedLead : null,
-        treatment_id: selectedTreatment || null,
-        professional_id: profId,
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        scheduled_at: startTime.toISOString(),
-        duration_minutes: parseInt(duration) || 60,
-        appointment_type: appointmentType,
-        credit_check_required: appointmentType === 'evaluation' ? !!lead?.cpf : false,
-        credit_check_status: appointmentType === 'evaluation' && lead?.cpf ? 'pending' : 'not_required',
-        notes: notes || null,
-      };
-      const { data: insertedAppointment, error } = await supabase.from('appointments')
-        .insert(payload)
-        .select('id, start_time, professional_id')
-        .single();
+      const { data: insertedAppointment, error } = await callAgendaRpc<{ id: string; start_time: string; professional_id: string }>('create_appointment_secure', {
+        p_clinic_id: clinicId!,
+        p_location_id: selectedLocationId,
+        p_professional_id: profId,
+        p_patient_id: appointmentType === 'session' ? selectedPatient : null,
+        p_lead_id: appointmentType === 'evaluation' ? selectedLead : null,
+        p_treatment_id: selectedTreatment || null,
+        p_start_time: startTime.toISOString(),
+        p_appointment_type: appointmentType,
+        p_notes: notes || null,
+        p_duration_minutes: parseInt(duration) || null,
+        p_contract_id: null,
+        p_contract_item_id: null,
+      });
       if (error) throw error;
+      if (!insertedAppointment) throw new Error('O banco não retornou o agendamento criado.');
 
       if (appointmentType === 'evaluation' && selectedLead) {
         const { error: leadError } = await supabase.from('leads')
@@ -904,7 +834,7 @@ export default function AppointmentsPage() {
       toast({ title: 'Agendamento criado!' });
     },
     onError: (err: Error) => {
-      const msg = err.message || 'Erro ao criar agendamento.';
+      const msg = getAgendaErrorMessage(err) || 'Erro ao criar agendamento.';
       if (
         msg.includes('Já existe outro agendamento para esse horário.') ||
         msg.includes('Existe um bloqueio para esse horário.') ||
@@ -957,17 +887,11 @@ export default function AppointmentsPage() {
           throw new Error('Informe o motivo para continuar.');
         }
 
-        const patch: Record<string, unknown> = {
-          status: exceptionModal.mode === 'cancel' ? 'cancelled' : 'no_show',
-        };
-
-        if (exceptionModal.mode === 'cancel') patch.cancelled_reason = exceptionReason.trim();
-        if (exceptionModal.mode === 'no_show') patch.no_show_reason = exceptionReason.trim();
-
-        const { error } = await supabase.from('appointments')
-          .update(patch)
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.id);
+        const { error } = await callAgendaRpc<AppointmentRow>('cancel_appointment_secure', {
+          p_appointment_id: appointment.id,
+          p_reason: exceptionReason.trim(),
+          p_status: exceptionModal.mode === 'cancel' ? 'cancelled' : 'no_show',
+        });
         if (error) throw error;
 
         if (appointment.lead_id && appointment.appointment_type === 'evaluation') {
@@ -987,52 +911,19 @@ export default function AppointmentsPage() {
 
       const startTime = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
       const durationMinutes = parseInt(rescheduleDuration) || 60;
-      const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
       const nextProfessionalId = rescheduleProfessional === 'unassigned' ? null : rescheduleProfessional;
-      if (nextProfessionalId && !hasAvailabilityWindow(nextProfessionalId, startTime, endTime)) {
-        throw new Error('Esse novo horário está fora da disponibilidade semanal do profissional.');
-      }
-      await assertNoSchedulingConflicts({
-        professionalId: nextProfessionalId,
-        startTime,
-        endTime,
-        ignoreAppointmentId: appointment.id,
-      });
       const mergedNotes = [appointment.notes, rescheduleNotes].filter(Boolean).join('\n\n');
-
-      const { data: newAppointment, error: createError } = await supabase.from('appointments')
-        .insert({
-          clinic_id: clinicId,
-          location_id: appointment.location_id || selectedLocationId,
-          patient_id: appointment.patient_id,
-          lead_id: appointment.lead_id,
-          treatment_id: appointment.treatment_id,
-          professional_id: nextProfessionalId,
-          appointment_type: appointment.appointment_type,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          scheduled_at: startTime.toISOString(),
-          duration_minutes: durationMinutes,
-          notes: mergedNotes || null,
-          status: 'scheduled',
-          credit_check_required: appointment.credit_check_required || false,
-          credit_check_status: appointment.credit_check_status || 'not_required',
-          rescheduled_from: appointment.id,
-          created_by: user?.id || null,
-        })
-        .select('id')
-        .single();
+      const { data: newAppointment, error: createError } = await callAgendaRpc<{ id: string }>('reschedule_appointment_secure', {
+        p_appointment_id: appointment.id,
+        p_start_time: startTime.toISOString(),
+        p_professional_id: nextProfessionalId,
+        p_location_id: appointment.location_id || selectedLocationId,
+        p_notes: mergedNotes || null,
+        p_duration_minutes: durationMinutes,
+        p_reason: exceptionReason.trim() || 'Remarcado',
+      });
       if (createError) throw createError;
-
-      const { error: updateError } = await supabase.from('appointments')
-        .update({
-          status: 'rescheduled',
-          rescheduled_to: newAppointment.id,
-          cancelled_reason: exceptionReason.trim() || 'Remarcado',
-        })
-        .eq('clinic_id', clinicId)
-        .eq('id', appointment.id);
-      if (updateError) throw updateError;
+      if (!newAppointment) throw new Error('O banco não retornou o novo agendamento.');
 
       if (appointment.lead_id && appointment.appointment_type === 'evaluation') {
         const { error: leadError } = await supabase.from('leads')
@@ -1049,7 +940,7 @@ export default function AppointmentsPage() {
       setExceptionModal(null);
       toast({ title: 'Agenda atualizada' });
     },
-    onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Erro', description: getAgendaErrorMessage(err), variant: 'destructive' }),
   });
 
   const reassignProfessionalMutation = useMutation({
@@ -1058,25 +949,11 @@ export default function AppointmentsPage() {
       const nextProfessionalId = reassignProfessional === 'unassigned' ? null : reassignProfessional;
       if ((viewAppt.professional_id || null) === nextProfessionalId) return;
 
-      const start = getAppointmentStartDate(viewAppt);
-      const end = getAppointmentEndDate(viewAppt);
-
-      if (nextProfessionalId && !hasAvailabilityWindow(nextProfessionalId, start, end)) {
-        throw new Error('O profissional selecionado não possui disponibilidade neste horário.');
-      }
-
-      await assertNoSchedulingConflicts({
-        professionalId: nextProfessionalId,
-        startTime: start,
-        endTime: end,
-        ignoreAppointmentId: viewAppt.id,
+      if (!nextProfessionalId) throw new Error('Selecione um profissional para o agendamento.');
+      const { error } = await callAgendaRpc<AppointmentRow>('reassign_appointment_professional_secure', {
+        p_appointment_id: viewAppt.id,
+        p_professional_id: nextProfessionalId,
       });
-
-      const { error } = await supabase
-        .from('appointments')
-        .update({ professional_id: nextProfessionalId })
-        .eq('id', viewAppt.id)
-        .eq('clinic_id', clinicId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1086,7 +963,7 @@ export default function AppointmentsPage() {
       qc.invalidateQueries({ queryKey: ['appointments'] });
       toast({ title: 'Profissional reatribuído!' });
     },
-    onError: (error) => toast({ title: 'Não foi possível reatribuir', description: error.message, variant: 'destructive' }),
+    onError: (error) => toast({ title: 'Não foi possível reatribuir', description: getAgendaErrorMessage(error), variant: 'destructive' }),
   });
 
   const saveAvailabilityMutation = useMutation({
@@ -1271,32 +1148,25 @@ export default function AppointmentsPage() {
       if (!clinicId || !waitlist) throw new Error('Dados da lista de espera inválidos.');
 
       const startTime = notification.matched_slot_start;
-      const endTime = notification.matched_slot_end;
       const professionalId = notification.matched_professional_id;
       if (!professionalId) throw new Error('Profissional da vaga não identificado.');
 
-      const appointmentPayload: Record<string, unknown> = {
-        clinic_id: clinicId,
-        location_id: selectedLocationId,
-        patient_id: waitlist.patient_id,
-        lead_id: waitlist.lead_id,
-        treatment_id: waitlist.treatment_id,
-        professional_id: professionalId,
-        start_time: startTime,
-        end_time: endTime,
-        scheduled_at: startTime,
-        duration_minutes: waitlist.min_duration_minutes,
-        appointment_type: waitlist.lead_id ? 'evaluation' : 'session',
-        status: 'scheduled',
-        notes: waitlist.notes || null,
-      };
-
-      const { data: appointment, error: appointmentError } = await supabase
-        .from('appointments')
-        .insert(appointmentPayload)
-        .select('id')
-        .single();
+      const { data: appointment, error: appointmentError } = await callAgendaRpc<{ id: string }>('create_appointment_secure', {
+        p_clinic_id: clinicId,
+        p_location_id: selectedLocationId,
+        p_professional_id: professionalId,
+        p_patient_id: waitlist.patient_id,
+        p_lead_id: waitlist.lead_id,
+        p_treatment_id: waitlist.treatment_id,
+        p_start_time: startTime,
+        p_appointment_type: waitlist.lead_id ? 'evaluation' : 'session',
+        p_notes: waitlist.notes || null,
+        p_duration_minutes: waitlist.min_duration_minutes,
+        p_contract_id: null,
+        p_contract_item_id: null,
+      });
       if (appointmentError) throw appointmentError;
+      if (!appointment) throw new Error('O banco não retornou o agendamento criado.');
 
       const { error: notifError } = await supabase
         .from('waitlist_notifications')
@@ -1336,7 +1206,7 @@ export default function AppointmentsPage() {
       qc.invalidateQueries({ queryKey: ['crm-leads'] });
       toast({ title: 'Agendamento criado a partir da lista de espera' });
     },
-    onError: (err: Error) => toast({ title: 'Erro ao criar agendamento', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Erro ao criar agendamento', description: getAgendaErrorMessage(err), variant: 'destructive' }),
   });
 
   const createWaitlistMutation = useMutation({
