@@ -752,7 +752,8 @@ export default function AppointmentsPage() {
         p_start_time: startTime.toISOString(),
         p_appointment_type: appointmentType,
         p_notes: notes || null,
-        p_duration_minutes: parseInt(duration) || null,
+        // O banco resolve a duração pela modalidade configurada para o profissional.
+        p_duration_minutes: null,
         p_contract_id: null,
         p_contract_item_id: null,
         p_billing_type: billingType,
@@ -1676,18 +1677,27 @@ export default function AppointmentsPage() {
             {halfHourSlots.flatMap((slot, slotIndex) => [
               <div key={`time-${slot}`} className="sticky left-0 z-10 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">{slot}</div>,
               ...calendarDays.map((day) => {
-                const slotAppointments = getApptsForDay(day).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                const dayAppointments = getApptsForDay(day);
+                const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                const slotStart = new Date(`${format(day, 'yyyy-MM-dd')}T${slot}:00`);
+                const coveringAppointment = dayAppointments.find((appointment) =>
+                  getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+                );
                 const isCurrentDay = isSameDay(day, now);
                 const isAvailable = isWithinProfessionalAvailability(day, slot, visibleProfessionalId);
                 return (
                   <div key={`${day.toISOString()}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
                     {showCurrentTime && isCurrentDay && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />}
-                    {slotAppointments.length === 0 ? (
+                    {slotAppointments.length === 0 && coveringAppointment ? (
+                      <div className="flex h-full w-full items-center rounded-sm border-x border-primary/20 bg-primary/10 px-1 text-[9px] text-primary/70" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`}>
+                        até {format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}
+                      </div>
+                    ) : slotAppointments.length === 0 ? (
                       <button type="button" disabled={!isAvailable} className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(day, slot)} aria-label={isAvailable ? `Agendar em ${format(day, 'dd/MM')} às ${slot}` : `Indisponível em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
                     ) : slotAppointments.map((appointment) => (
                       <button key={appointment.id} type="button" className={`w-full rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`} onClick={() => setViewAppt(appointment)} aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}>
-                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
-                        <span className="block truncate text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'}</span>
+                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="block truncate text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min</span>
                       </button>
                     ))}
                   </div>
@@ -1725,13 +1735,22 @@ export default function AppointmentsPage() {
           )}
           <div className="divide-y">
             {halfHourSlots.map((slot, slotIndex) => {
-              const slotAppointments = getApptsForDay(currentDate).filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+              const dayAppointments = getApptsForDay(currentDate);
+              const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+              const slotStart = new Date(`${format(currentDate, 'yyyy-MM-dd')}T${slot}:00`);
+              const coveringAppointment = dayAppointments.find((appointment) =>
+                getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+              );
               const isAvailable = isWithinProfessionalAvailability(currentDate, slot, visibleProfessionalId);
               return (
                 <div key={slot} className={`group relative grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1 ${!isAvailable ? 'bg-muted/30' : ''}`}>
                   {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute left-[68px] right-0 z-20 border-t border-primary/70" style={{ top: currentTimeDayOffset }}><span className="absolute -left-[52px] -top-2 text-[10px] font-medium text-primary">{format(now, 'HH:mm')}</span></div>}
                   <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
-                  {slotAppointments.length === 0 ? (
+                  {slotAppointments.length === 0 && coveringAppointment ? (
+                    <div className="flex min-h-[48px] items-center rounded-lg border-x border-primary/20 bg-primary/10 px-3 text-xs text-primary/70" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`}>
+                      Continuação da consulta até {format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}
+                    </div>
+                  ) : slotAppointments.length === 0 ? (
                     <button type="button" disabled={!isAvailable} className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition enabled:hover:border-dashed enabled:hover:border-primary/30 enabled:hover:bg-primary/5 enabled:hover:px-3 enabled:hover:text-primary enabled:focus-visible:border-primary/30 enabled:focus-visible:bg-primary/5 enabled:focus-visible:px-3 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-2 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(currentDate, slot)} aria-label={isAvailable ? `Agendar às ${slot}` : `Indisponível às ${slot}`}>+ Agendar</button>
                   ) : (
                     <div className="space-y-1">
@@ -1741,7 +1760,7 @@ export default function AppointmentsPage() {
                           <button key={appointment.id} type="button" className={`flex w-full flex-col gap-2 rounded-lg border bg-background px-3 py-2 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md sm:flex-row sm:items-center sm:justify-between ${status?.style || ''}`} onClick={() => setViewAppt(appointment)}>
                             <div className="min-w-0">
                               <p className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</p>
-                              <p className="truncate text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {getProfessionalLabel(appointment.professional_id)}</p>
+                              <p className="truncate text-xs text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min · {getProfessionalLabel(appointment.professional_id)}</p>
                             </div>
                             <BrandBadge status={status?.badge || 'default'}>{status?.label || appointment.status}</BrandBadge>
                           </button>
@@ -1856,11 +1875,8 @@ export default function AppointmentsPage() {
 
             <div className="space-y-2">
               <Label>{appointmentType === 'evaluation' ? 'Tratamento de interesse' : 'Tratamento'}</Label>
-                <Select value={selectedTreatment} onValueChange={v => {
+              <Select value={selectedTreatment} onValueChange={v => {
                 setSelectedTreatment(v);
-                const source = treatments.map((t) => ({ id: t.id, name: t.name, duration: Number(t.duration_minutes || 60) }));
-                const t = source.find((tr) => tr.id === v);
-                if (t) setDuration(String(t.duration));
               }}>
                 <SelectTrigger><SelectValue placeholder="Selecionar tratamento" /></SelectTrigger>
                 <SelectContent>
@@ -1914,7 +1930,8 @@ export default function AppointmentsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Duração (min)</Label>
-                <Input type="number" value={duration} onChange={e => setDuration(e.target.value)} />
+                <Input type="number" value={duration} readOnly className="bg-muted/50" />
+                <p className="text-[11px] text-muted-foreground">Definida pela regra de {billingType === 'insurance' ? 'convênio' : 'consulta particular'} deste profissional.</p>
               </div>
             </div>
             <div className="space-y-2">
