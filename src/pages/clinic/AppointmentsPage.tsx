@@ -200,6 +200,8 @@ export default function AppointmentsPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [createFormError, setCreateFormError] = useState('');
   const [duration, setDuration] = useState('60');
+  const [billingType, setBillingType] = useState<'private' | 'insurance'>('private');
+  const [selectedHealthInsurance, setSelectedHealthInsurance] = useState('');
   const [notes, setNotes] = useState('');
   const [quickPatientOpen, setQuickPatientOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
@@ -342,6 +344,30 @@ export default function AppointmentsPage() {
     },
     enabled: !!clinicId,
   });
+
+  const { data: appointmentDurationSettings } = useQuery({
+    queryKey: ['agenda-appointment-durations', clinicId, selectedProfessional],
+    queryFn: async () => {
+      const [{ data: settings, error: settingsError }, { data: insuranceLinks, error: linksError }] = await Promise.all([
+        supabase.from('professional_settings').select('private_appointment_duration_minutes').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessional).maybeSingle(),
+        supabase.from('professional_health_insurances').select('health_insurance_id, appointment_duration_minutes, health_insurances(name)').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessional).eq('status', 'active'),
+      ]);
+      if (settingsError) throw settingsError;
+      if (linksError) throw linksError;
+      return { privateDuration: settings?.private_appointment_duration_minutes || 60, insuranceLinks: insuranceLinks || [] };
+    },
+    enabled: !!clinicId && !!selectedProfessional && dialogOpen,
+  });
+
+  useEffect(() => {
+    if (!appointmentDurationSettings) return;
+    if (billingType === 'private') {
+      setDuration(String(appointmentDurationSettings.privateDuration));
+      return;
+    }
+    const link = appointmentDurationSettings.insuranceLinks.find(item => item.health_insurance_id === selectedHealthInsurance);
+    if (link) setDuration(String(link.appointment_duration_minutes));
+  }, [appointmentDurationSettings, billingType, selectedHealthInsurance]);
 
   const { data: treatments = [] } = useQuery({
     queryKey: ['treatments-select', clinicId],
@@ -779,6 +805,11 @@ export default function AppointmentsPage() {
       if (!profId) {
         throw new Error('Selecione um profissional para este agendamento.');
       }
+      if (billingType === 'insurance') {
+        if (!selectedHealthInsurance) throw new Error('Selecione o convênio da consulta.');
+        const professionalAcceptsInsurance = appointmentDurationSettings?.insuranceLinks.some(link => link.health_insurance_id === selectedHealthInsurance);
+        if (!professionalAcceptsInsurance) throw new Error('O convênio selecionado não está ativo para este profissional.');
+      }
       if (appointmentType === 'session') {
         if (!selectedTreatment) throw new Error('Selecione um tratamento.');
         const isAllowed = sessionTreatmentOptions.some((item) => item.id === selectedTreatment);
@@ -803,6 +834,8 @@ export default function AppointmentsPage() {
         p_duration_minutes: parseInt(duration) || null,
         p_contract_id: null,
         p_contract_item_id: null,
+        p_billing_type: billingType,
+        p_health_insurance_id: billingType === 'insurance' ? selectedHealthInsurance : null,
       });
       if (error) throw error;
       if (!insertedAppointment) throw new Error('O banco não retornou o agendamento criado.');
@@ -1271,6 +1304,8 @@ export default function AppointmentsPage() {
     setSelectedTreatment('');
     setSelectedProfessional('');
     setDuration('60');
+    setBillingType('private');
+    setSelectedHealthInsurance('');
     setNotes('');
     setCreateFormError('');
   };
@@ -1954,6 +1989,25 @@ export default function AppointmentsPage() {
               )}
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Modalidade da consulta</Label>
+                <Select value={billingType} onValueChange={value => { setBillingType(value as 'private' | 'insurance'); setSelectedHealthInsurance(''); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="private">Particular</SelectItem><SelectItem value="insurance">Convênio</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {billingType === 'insurance' && (
+                <div className="space-y-2">
+                  <Label>Convênio</Label>
+                  <Select value={selectedHealthInsurance} onValueChange={setSelectedHealthInsurance} disabled={!selectedProfessional}>
+                    <SelectTrigger><SelectValue placeholder={selectedProfessional ? 'Selecionar convênio' : 'Selecione o profissional'} /></SelectTrigger>
+                    <SelectContent>{appointmentDurationSettings?.insuranceLinks.map(link => <SelectItem key={link.health_insurance_id} value={link.health_insurance_id}>{link.health_insurances?.name || 'Convênio'} · {link.appointment_duration_minutes} min</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Data *</Label>
@@ -1977,7 +2031,7 @@ export default function AppointmentsPage() {
               <BrandButton
                 type="submit"
                 className="flex-1"
-                disabled={createMutation.isPending || (appointmentType === 'session' ? (!selectedPatient || !selectedTreatment || !hasSessionBalance) : !selectedLead) || !selectedProfessional}
+                disabled={createMutation.isPending || (appointmentType === 'session' ? (!selectedPatient || !selectedTreatment || !hasSessionBalance) : !selectedLead) || !selectedProfessional || (billingType === 'insurance' && !selectedHealthInsurance)}
               >
                 {createMutation.isPending ? 'Criando...' : appointmentType === 'evaluation' ? 'Agendar avaliação' : 'Agendar'}
               </BrandButton>

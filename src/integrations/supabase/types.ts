@@ -438,6 +438,7 @@ export type Database = {
         Row: {
           appointment_type: string
           batch_id: string | null
+          billing_type: string
           cancelled_reason: string | null
           checked_in_at: string | null
           clinic_id: string
@@ -453,6 +454,7 @@ export type Database = {
           duration_minutes: number
           end_time: string
           id: string
+          health_insurance_id: string | null
           is_batch: boolean
           lead_id: string | null
           location_id: string | null
@@ -471,6 +473,7 @@ export type Database = {
         Insert: {
           appointment_type?: string
           batch_id?: string | null
+          billing_type?: string
           cancelled_reason?: string | null
           checked_in_at?: string | null
           clinic_id: string
@@ -486,6 +489,7 @@ export type Database = {
           duration_minutes?: number
           end_time: string
           id?: string
+          health_insurance_id?: string | null
           is_batch?: boolean
           lead_id?: string | null
           location_id?: string | null
@@ -504,6 +508,7 @@ export type Database = {
         Update: {
           appointment_type?: string
           batch_id?: string | null
+          billing_type?: string
           cancelled_reason?: string | null
           checked_in_at?: string | null
           clinic_id?: string
@@ -519,6 +524,7 @@ export type Database = {
           duration_minutes?: number
           end_time?: string
           id?: string
+          health_insurance_id?: string | null
           is_batch?: boolean
           lead_id?: string | null
           location_id?: string | null
@@ -2358,6 +2364,7 @@ export type Database = {
         Row: {
           accepts_new_patients: boolean
           ai_instructions: string | null
+          appointment_duration_minutes: number
           authorization_required: boolean
           clinic_id: string
           created_at: string
@@ -2371,6 +2378,7 @@ export type Database = {
         Insert: {
           accepts_new_patients?: boolean
           ai_instructions?: string | null
+          appointment_duration_minutes?: number
           authorization_required?: boolean
           clinic_id: string
           created_at?: string
@@ -2384,6 +2392,7 @@ export type Database = {
         Update: {
           accepts_new_patients?: boolean
           ai_instructions?: string | null
+          appointment_duration_minutes?: number
           authorization_required?: boolean
           clinic_id?: string
           created_at?: string
@@ -2485,6 +2494,7 @@ export type Database = {
           maximum_booking_days: number
           minimum_booking_notice_hours: number
           professional_id: string
+          private_appointment_duration_minutes: number
           updated_at: string
         }
         Insert: {
@@ -2501,6 +2511,7 @@ export type Database = {
           maximum_booking_days?: number
           minimum_booking_notice_hours?: number
           professional_id: string
+          private_appointment_duration_minutes?: number
           updated_at?: string
         }
         Update: {
@@ -2517,6 +2528,7 @@ export type Database = {
           maximum_booking_days?: number
           minimum_booking_notice_hours?: number
           professional_id?: string
+          private_appointment_duration_minutes?: number
           updated_at?: string
         }
         Relationships: [

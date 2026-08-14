@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgeDollarSign, Link2, Save, ShieldCheck } from 'lucide-react';
+import { BadgeDollarSign, CalendarClock, Link2, Save, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import HealthInsurancesPage from '@/pages/clinic/HealthInsurancesPage';
@@ -14,12 +14,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-type Section = 'insurances' | 'private-prices' | 'links';
+type Section = 'insurances' | 'private-prices' | 'links' | 'durations';
 
 const sections = [
   { id: 'insurances' as const, label: 'Cadastro de convênios', icon: ShieldCheck },
   { id: 'private-prices' as const, label: 'Consulta particular', icon: BadgeDollarSign },
   { id: 'links' as const, label: 'Profissional × convênio', icon: Link2 },
+  { id: 'durations' as const, label: 'Duração das consultas', icon: CalendarClock },
 ];
 
 export default function HealthcareSettingsTab() {
@@ -30,6 +31,7 @@ export default function HealthcareSettingsTab() {
   const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
   const [selectedInsuranceIds, setSelectedInsuranceIds] = useState<string[]>([]);
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
 
   const { data: professionals = [], isLoading: loadingProfessionals } = useQuery({
     queryKey: ['healthcare-settings-professionals', clinicId],
@@ -110,6 +112,45 @@ export default function HealthcareSettingsTab() {
     );
   };
 
+  const { data: durationSettings } = useQuery({
+    queryKey: ['professional-appointment-durations', clinicId, selectedProfessionalId],
+    queryFn: async () => {
+      const [{ data: settings, error: settingsError }, { data: links, error: linksError }] = await Promise.all([
+        supabase.from('professional_settings').select('private_appointment_duration_minutes').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessionalId).maybeSingle(),
+        supabase.from('professional_health_insurances').select('health_insurance_id, appointment_duration_minutes, health_insurances(name)').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessionalId).eq('status', 'active'),
+      ]);
+      if (settingsError) throw settingsError;
+      if (linksError) throw linksError;
+      return { privateDuration: settings?.private_appointment_duration_minutes || 60, links: links || [] };
+    },
+    enabled: !!clinicId && !!selectedProfessionalId && section === 'durations',
+  });
+
+  const durationMutation = useMutation({
+    mutationFn: async () => {
+      if (!clinicId || !selectedProfessionalId || !durationSettings) throw new Error('Selecione um profissional');
+      const normalize = (value: string | undefined, fallback: number) => {
+        const parsed = Number(value ?? fallback);
+        if (!Number.isInteger(parsed) || parsed < 5 || parsed > 480) throw new Error('As durações devem estar entre 5 e 480 minutos');
+        return parsed;
+      };
+      const { error: settingsError } = await supabase.from('professional_settings').upsert({
+        clinic_id: clinicId,
+        professional_id: selectedProfessionalId,
+        private_appointment_duration_minutes: normalize(durationDrafts.private, durationSettings.privateDuration),
+      }, { onConflict: 'professional_id' });
+      if (settingsError) throw settingsError;
+      await Promise.all(durationSettings.links.map(link => supabase.from('professional_health_insurances').update({
+        appointment_duration_minutes: normalize(durationDrafts[link.health_insurance_id], link.appointment_duration_minutes),
+      }).eq('clinic_id', clinicId).eq('professional_id', selectedProfessionalId).eq('health_insurance_id', link.health_insurance_id).then(({ error }) => { if (error) throw error; })));
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['professional-appointment-durations'] });
+      toast({ title: 'Durações das consultas atualizadas' });
+    },
+    onError: (error: Error) => toast({ title: 'Não foi possível salvar', description: error.message, variant: 'destructive' }),
+  });
+
   return (
     <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
       <aside className="h-fit rounded-lg border bg-card p-2">
@@ -171,6 +212,25 @@ export default function HealthcareSettingsTab() {
                   <Button onClick={() => linksMutation.mutate()} disabled={linksMutation.isPending}><Save className="mr-2 h-4 w-4" />{linksMutation.isPending ? 'Salvando...' : 'Salvar vínculos'}</Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {section === 'durations' && (
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Duração das consultas por profissional</CardTitle><p className="text-sm text-muted-foreground">Defina o tempo da consulta particular e de cada convênio atendido pelo médico.</p></CardHeader>
+            <CardContent className="space-y-5">
+              <div className="max-w-md space-y-2"><Label>Profissional</Label><Select value={selectedProfessionalId} onValueChange={id => { setSelectedProfessionalId(id); setDurationDrafts({}); }}><SelectTrigger><SelectValue placeholder="Selecione um profissional" /></SelectTrigger><SelectContent>{professionals.map(professional => <SelectItem key={professional.id} value={professional.id}>{professional.full_name}{professional.specialty ? ` — ${professional.specialty}` : ''}</SelectItem>)}</SelectContent></Select></div>
+              {selectedProfessionalId && durationSettings && (
+                <div className="overflow-hidden rounded-lg border">
+                  <Table><TableHeader><TableRow><TableHead>Modalidade</TableHead><TableHead className="w-56">Duração da consulta</TableHead></TableRow></TableHeader><TableBody>
+                    <TableRow><TableCell className="font-medium">Particular</TableCell><TableCell><div className="flex items-center gap-2"><Input type="number" min="5" max="480" step="5" className="h-8" value={durationDrafts.private ?? String(durationSettings.privateDuration)} onChange={event => setDurationDrafts(current => ({ ...current, private: event.target.value }))} /><span className="text-sm text-muted-foreground">min</span></div></TableCell></TableRow>
+                    {durationSettings.links.map(link => <TableRow key={link.health_insurance_id}><TableCell className="font-medium">{link.health_insurances?.name || 'Convênio'}</TableCell><TableCell><div className="flex items-center gap-2"><Input type="number" min="5" max="480" step="5" className="h-8" value={durationDrafts[link.health_insurance_id] ?? String(link.appointment_duration_minutes)} onChange={event => setDurationDrafts(current => ({ ...current, [link.health_insurance_id]: event.target.value }))} /><span className="text-sm text-muted-foreground">min</span></div></TableCell></TableRow>)}
+                  </TableBody></Table>
+                </div>
+              )}
+              {selectedProfessionalId && durationSettings?.links.length === 0 && <p className="text-sm text-muted-foreground">Este profissional ainda não está vinculado a nenhum convênio. A duração particular já pode ser configurada.</p>}
+              {selectedProfessionalId && <Button onClick={() => durationMutation.mutate()} disabled={!durationSettings || durationMutation.isPending}><Save className="mr-2 h-4 w-4" />{durationMutation.isPending ? 'Salvando...' : 'Salvar durações'}</Button>}
             </CardContent>
           </Card>
         )}
