@@ -8,10 +8,10 @@ type AgendaStatCardProps = {
 };
 
 const tones = {
-  default: 'bg-primary/8 text-primary',
-  success: 'bg-emerald-50 text-emerald-700',
-  warning: 'bg-amber-50 text-amber-700',
-  danger: 'bg-rose-50 text-rose-700',
+  default: 'bg-primary-light text-primary-dark',
+  success: 'bg-success-bg text-success',
+  warning: 'bg-warning-bg text-warning',
+  danger: 'bg-destructive/10 text-destructive',
 };
 
 export function AgendaStatCard({ value, label, icon: Icon, tone = 'default' }: AgendaStatCardProps) {
@@ -27,4 +27,3 @@ export function AgendaStatCard({ value, label, icon: Icon, tone = 'default' }: A
     </div>
   );
 }
-
