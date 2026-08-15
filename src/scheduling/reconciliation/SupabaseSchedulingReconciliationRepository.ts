@@ -1,16 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../integrations/supabase/types';
-import type { SchedulingContext } from '../domain/inputs';
-import type { IsoInstant } from '../domain/time';
-import type { SchedulingReconciliationRepository } from './SchedulingReconciliationRepository';
-import { SchedulingReconciliationRepositoryError } from './SchedulingReconciliationRepository';
+import type { Database } from '../../integrations/supabase/types.ts';
+import type { SchedulingContext } from '../domain/inputs.ts';
+import type { IsoInstant } from '../domain/time.ts';
+import type { SchedulingReconciliationRepository } from './SchedulingReconciliationRepository.ts';
+import { SchedulingReconciliationRepositoryError } from './SchedulingReconciliationRepository.ts';
 import type {
   RegisterSchedulingProviderEventInput,
   SchedulingProviderEvent,
   SchedulingProviderEventStatus,
   SchedulingReconciliationState,
   SchedulingSyncCheckpoint,
-} from './models';
+} from './models.ts';
 
 interface SupabaseResult { data: unknown; error: unknown }
 

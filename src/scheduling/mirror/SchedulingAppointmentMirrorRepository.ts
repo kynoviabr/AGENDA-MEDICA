@@ -1,11 +1,11 @@
-import type { SchedulingContext } from '../domain/inputs';
-import type { IsoInstant } from '../domain/time';
+import type { SchedulingContext } from '../domain/inputs.ts';
+import type { IsoInstant } from '../domain/time.ts';
 import type {
   SchedulingAppointmentMirror,
   SchedulingSyncConflict,
   SchedulingSyncError,
   UpsertExternalAppointmentMirrorInput,
-} from './models';
+} from './models.ts';
 
 export interface SchedulingAppointmentMirrorRepository {
   getByExternalId(

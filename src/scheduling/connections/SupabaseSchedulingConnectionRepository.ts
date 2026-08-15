@@ -1,18 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../integrations/supabase/types';
-import type { SchedulingContext } from '../domain/inputs';
+import type { Database } from '../../integrations/supabase/types.ts';
+import type { SchedulingContext } from '../domain/inputs.ts';
 import type {
   ListSchedulingConnectionsInput,
   ListSchedulingMappingsInput,
   SchedulingConnectionRepository,
-} from './SchedulingConnectionRepository';
-import { SchedulingConnectionRepositoryError } from './SchedulingConnectionRepository';
+} from './SchedulingConnectionRepository.ts';
+import { SchedulingConnectionRepositoryError } from './SchedulingConnectionRepository.ts';
 import type {
   SchedulingConnection,
   SchedulingEntityMapping,
   SchedulingMappedEntityType,
   UpsertSchedulingEntityMappingInput,
-} from './models';
+} from './models.ts';
 
 interface SupabaseResult {
   data: unknown;

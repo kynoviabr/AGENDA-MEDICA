@@ -1,10 +1,10 @@
-import type { SchedulingContext } from '../domain/inputs';
+import type { SchedulingContext } from '../domain/inputs.ts';
 import type {
   SchedulingConnection,
   SchedulingEntityMapping,
   SchedulingMappedEntityType,
   UpsertSchedulingEntityMappingInput,
-} from './models';
+} from './models.ts';
 
 export type ListSchedulingConnectionsInput = {
   includeDisabled?: boolean;

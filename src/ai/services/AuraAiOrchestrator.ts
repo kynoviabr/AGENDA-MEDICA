@@ -9,6 +9,7 @@ import { AiValidationError } from '../errors/AiError.ts';
 import type { AiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { NoopAiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import type { AuraConversationEngine } from './AuraConversationEngine.ts';
+import type { AiToolCoordinator } from '../tools/AuraToolCoordinator.ts';
 
 export interface AiClinicConfigLoader {
   load(context: AiExecutionContext): Promise<AiClinicConfig>;
@@ -28,6 +29,7 @@ export class AuraAiOrchestrator {
     private readonly clinicConfigLoader: AiClinicConfigLoader,
     private readonly usageRecorder: AiUsageRecorder = new NoopAiUsageRecorder(),
     options: AuraAiOrchestratorOptions = {},
+    private readonly toolCoordinator?: AiToolCoordinator,
   ) {
     this.now = options.now ?? (() => new Date());
   }
@@ -39,17 +41,18 @@ export class AuraAiOrchestrator {
     if (config.clinicId !== context.clinicId) throw new AiValidationError('Clinic configuration crossed the tenant boundary.');
     if (!config.enabled) throw new AiValidationError('Aura AI is disabled for this clinic.');
     const conversation = await this.conversationEngine.process(context, message, config, this.buildClinicContext(config));
+    const toolResponse = await this.toolCoordinator?.executeIfPlanned(context, conversation, config);
     return {
-      text: conversation.responseText,
-      provider: conversation.provider,
-      model: conversation.model,
-      usage: conversation.usage,
-      latencyMs: conversation.latencyMs,
+      text: toolResponse?.text || conversation.responseText,
+      provider: toolResponse?.provider || conversation.provider,
+      model: toolResponse?.model || conversation.model,
+      usage: toolResponse?.usage || conversation.usage,
+      latencyMs: conversation.latencyMs + (toolResponse?.latencyMs || 0),
       safetyDisposition: conversation.safetyDisposition,
       requiresClarification: Boolean(conversation.clarification),
       requiresHandoff: conversation.requiresHandoff,
       conversationIntent: conversation.intent,
-      readyForToolExecution: conversation.readyForToolExecution,
+      readyForToolExecution: conversation.readyForToolExecution && !toolResponse,
     };
   }
 

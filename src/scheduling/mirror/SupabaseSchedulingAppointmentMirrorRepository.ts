@@ -1,22 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../integrations/supabase/types';
-import type { SchedulingContext } from '../domain/inputs';
-import type { SchedulingAppointmentStatus, SchedulingConfirmationStatus } from '../domain/models';
-import type { IsoInstant } from '../domain/time';
+import type { Database } from '../../integrations/supabase/types.ts';
+import type { SchedulingContext } from '../domain/inputs.ts';
+import type { SchedulingAppointmentStatus, SchedulingConfirmationStatus } from '../domain/models.ts';
+import type { IsoInstant } from '../domain/time.ts';
 import {
   mapInternalAppointmentStatus,
   mapInternalAppointmentType,
   mapInternalBillingType,
-} from '../providers/internal/internalSchedulingMappers';
-import type { InternalAppointmentStatus } from '../providers/internal/InternalSchedulingDataSource';
-import type { SchedulingAppointmentMirrorRepository } from './SchedulingAppointmentMirrorRepository';
-import { SchedulingMirrorRepositoryError } from './SchedulingAppointmentMirrorRepository';
+} from '../providers/internal/internalSchedulingMappers.ts';
+import type { InternalAppointmentStatus } from '../providers/internal/InternalSchedulingDataSource.ts';
+import type { SchedulingAppointmentMirrorRepository } from './SchedulingAppointmentMirrorRepository.ts';
+import { SchedulingMirrorRepositoryError } from './SchedulingAppointmentMirrorRepository.ts';
 import type {
   SchedulingAppointmentMirror,
   SchedulingSyncConflict,
   SchedulingSyncError,
   UpsertExternalAppointmentMirrorInput,
-} from './models';
+} from './models.ts';
 
 interface SupabaseResult { data: unknown; error: unknown }
 

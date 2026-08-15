@@ -86,7 +86,7 @@ Não configure `WHATSAPP_AI_DEFAULT_CLINIC_ID`, `WHATSAPP_ACCESS_TOKEN` ou `WHAT
 
 O novo Aura AI Engine é ativado gradualmente por `whatsapp_ai_settings.ai_engine_mode`. O default é `legacy`; `shadow` executa a nova engine sem enviar sua resposta e `active` envia somente a resposta Aura. Nenhuma clínica deve ser movida para `active` antes de homologação multimodal e operacional.
 
-A Fase 5.6B adiciona estado conversacional pequeno e versionado, interpretação estruturada de intent/entidades, follow-ups, correções, referências, ambiguidades e clarificação. O estado usa revisão otimista por conversa e não contém histórico completo, disponibilidade, preços, appointments ou memória permanente. O engine apenas produz `readyForToolExecution`; nesta fase ele não consulta nem executa ferramentas de agenda.
+A Fase 5.6B adiciona estado conversacional pequeno e versionado, interpretação estruturada de intent/entidades, follow-ups, correções, referências, ambiguidades e clarificação. A Fase 5.6C conecta esse estado ao `SchedulingService` por tools tipadas: catálogos, disponibilidade e consultas do próprio paciente são read-only; criação, confirmação, cancelamento e reagendamento são mutations protegidas por autorização, revalidação de slot, idempotência e gates por clínica. O LLM nunca acessa Supabase, RPCs, banco ou provider. Todos os gates nascem desativados e mutations só podem ser ligadas após validação formal da leitura e com o engine em `active`. Veja [`docs/FASE_5_6C_AI_SCHEDULING_TOOLS.md`](docs/FASE_5_6C_AI_SCHEDULING_TOOLS.md).
 
 ## Módulos MVP desativados
 

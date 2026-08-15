@@ -1,5 +1,3 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../../integrations/supabase/types';
 import type {
   CancelAppointmentInput,
   ConfirmAppointmentInput,
@@ -20,8 +18,8 @@ import type {
   RescheduleAppointmentInput,
   SchedulingContext,
   UpdateAppointmentStatusInput,
-} from '../../domain/inputs';
-import { mapDomainStatusesToInternal } from './internalSchedulingMappers';
+} from '../../domain/inputs.ts';
+import { mapDomainStatusesToInternal } from './internalSchedulingMappers.ts';
 import type {
   InternalAppointmentRecord,
   InternalBlockRecord,
@@ -32,7 +30,7 @@ import type {
   InternalSchedulingDataSource,
   InternalServiceRecord,
   InternalSlotRecord,
-} from './InternalSchedulingDataSource';
+} from './InternalSchedulingDataSource.ts';
 
 interface SupabaseResult {
   data: unknown;
@@ -58,8 +56,6 @@ export interface InternalSupabaseClientLike {
   from(table: string): InternalSupabaseQuery;
   rpc(name: string, args: Record<string, unknown>): PromiseLike<SupabaseResult>;
 }
-
-type BrowserSupabaseClient = SupabaseClient<Database>;
 
 const appointmentColumns = [
   'id',
@@ -97,7 +93,7 @@ function asSingleRecord<T>(value: T | T[] | null): T | null {
 export class SupabaseInternalSchedulingDataSource implements InternalSchedulingDataSource {
   private readonly client: InternalSupabaseClientLike;
 
-  constructor(client: BrowserSupabaseClient | InternalSupabaseClientLike) {
+  constructor(client: InternalSupabaseClientLike) {
     this.client = client as unknown as InternalSupabaseClientLike;
   }
 

@@ -1,12 +1,12 @@
-import type { SchedulingContext } from '../domain/inputs';
-import type { IsoInstant } from '../domain/time';
+import type { SchedulingContext } from '../domain/inputs.ts';
+import type { IsoInstant } from '../domain/time.ts';
 import type {
   RegisterSchedulingProviderEventInput,
   SchedulingProviderEvent,
   SchedulingProviderEventStatus,
   SchedulingReconciliationState,
   SchedulingSyncCheckpoint,
-} from './models';
+} from './models.ts';
 
 export interface SchedulingReconciliationRepository {
   getState(context: SchedulingContext, connectionId: string): Promise<SchedulingReconciliationState | null>;

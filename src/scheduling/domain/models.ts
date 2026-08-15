@@ -1,4 +1,4 @@
-import type { IanaTimezone, IsoInstant, TimeRange } from './time';
+import type { IanaTimezone, IsoInstant, TimeRange } from './time.ts';
 
 export type SchedulingProviderType =
   | 'internal'

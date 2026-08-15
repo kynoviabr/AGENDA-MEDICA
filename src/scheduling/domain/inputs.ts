@@ -3,8 +3,8 @@ import type {
   SchedulingAppointmentType,
   SchedulingBillingType,
   SchedulingSource,
-} from './models';
-import type { DateRange, IanaTimezone, IsoInstant, TimeRange } from './time';
+} from './models.ts';
+import type { DateRange, IanaTimezone, IsoInstant, TimeRange } from './time.ts';
 
 export interface SchedulingContext {
   clinicId: string;

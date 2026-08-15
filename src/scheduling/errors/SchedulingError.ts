@@ -1,5 +1,5 @@
-import type { SchedulingProviderCapability } from '../domain/capabilities';
-import type { SchedulingProviderType } from '../domain/models';
+import type { SchedulingProviderCapability } from '../domain/capabilities.ts';
+import type { SchedulingProviderType } from '../domain/models.ts';
 
 export type SchedulingErrorCode =
   | 'SCHEDULING_PROVIDER_UNAVAILABLE'

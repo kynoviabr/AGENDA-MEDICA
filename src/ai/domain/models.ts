@@ -124,4 +124,5 @@ export interface AiClinicConfig {
   responseStyle: string;
   timezone?: string;
   administrativeContext?: readonly string[];
+  toolExecution?: import('../tools/domain.ts').AiToolExecutionConfig;
 }

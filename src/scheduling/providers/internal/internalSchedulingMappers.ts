@@ -11,7 +11,7 @@ import type {
   SchedulingProfessionalRules,
   SchedulingServiceItem,
   SchedulingSlot,
-} from '../../domain/models';
+} from '../../domain/models.ts';
 import type {
   InternalAppointmentRecord,
   InternalAppointmentStatus,
@@ -22,7 +22,7 @@ import type {
   InternalProfessionalRulesRecord,
   InternalServiceRecord,
   InternalSlotRecord,
-} from './InternalSchedulingDataSource';
+} from './InternalSchedulingDataSource.ts';
 
 interface DomainStatusMapping {
   status: SchedulingAppointmentStatus;

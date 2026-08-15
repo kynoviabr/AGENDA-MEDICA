@@ -18,6 +18,12 @@ import {
   WhatsappAuraAiBridge,
   AuraAiOrchestrator,
   AuraConversationEngine,
+  AuraSchedulingToolExecutor,
+  AuraToolCoordinator,
+  ConversationStateToolPlanner,
+  OpenAiToolResponseComposer,
+  SupabaseAiToolAuditRecorder,
+  SupabaseAiToolMutationGuard,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -26,6 +32,9 @@ import {
   type AiSupabaseClientLike,
   type WhatsappAiEngineMode,
 } from "../../../src/ai/index.ts";
+import { SchedulingService } from "../../../src/scheduling/services/SchedulingService.ts";
+import { InternalSchedulingProvider } from "../../../src/scheduling/providers/internal/InternalSchedulingProvider.ts";
+import { SupabaseInternalSchedulingDataSource } from "../../../src/scheduling/providers/internal/SupabaseInternalSchedulingDataSource.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -295,10 +304,11 @@ function createAuraBridge(
   });
   const aiClient = admin as unknown as AiSupabaseClientLike;
   const usageRecorder = new SupabaseAiUsageRecorder(aiClient);
+  const stateRepository = new SupabaseAiConversationStateRepository(aiClient);
   const conversationModel = modelOverride || Deno.env.get("OPENAI_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.llmModel;
   const conversationEngine = new AuraConversationEngine(
     new OpenAiConversationInterpreter({ apiKey }, conversationModel),
-    new SupabaseAiConversationStateRepository(aiClient),
+    stateRepository,
     new SupabaseAiConversationHistoryLoader(aiClient),
     usageRecorder,
     {
@@ -306,10 +316,29 @@ function createAuraBridge(
       executionPolicy: { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
     },
   );
+  const schedulingService = new SchedulingService(new InternalSchedulingProvider(
+    new SupabaseInternalSchedulingDataSource(admin as never),
+  ));
+  const toolCoordinator = new AuraToolCoordinator(
+    new ConversationStateToolPlanner(),
+    new AuraSchedulingToolExecutor(
+      schedulingService,
+      undefined,
+      new SupabaseAiToolAuditRecorder(aiClient),
+      undefined,
+      new SupabaseAiToolMutationGuard(aiClient),
+    ),
+    new OpenAiToolResponseComposer({ apiKey }, conversationModel),
+    stateRepository,
+    usageRecorder,
+    { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
+  );
   const orchestrator = new AuraAiOrchestrator(
     conversationEngine,
     new SupabaseAiClinicConfigLoader(aiClient),
     usageRecorder,
+    {},
+    toolCoordinator,
   );
   return new WhatsappAuraAiBridge(ingestion, orchestrator, usageRecorder);
 }

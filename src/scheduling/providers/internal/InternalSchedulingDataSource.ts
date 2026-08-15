@@ -18,7 +18,7 @@ import type {
   RescheduleAppointmentInput,
   SchedulingContext,
   UpdateAppointmentStatusInput,
-} from '../../domain/inputs';
+} from '../../domain/inputs.ts';
 
 export interface InternalLocationRecord {
   id: string;

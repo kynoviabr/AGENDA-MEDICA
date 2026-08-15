@@ -6,7 +6,7 @@ import {
   SchedulingSlotConflictError,
   SchedulingUnauthorizedError,
   SchedulingValidationError,
-} from '../../errors/SchedulingError';
+} from '../../errors/SchedulingError.ts';
 
 interface InternalErrorPayload {
   code?: unknown;

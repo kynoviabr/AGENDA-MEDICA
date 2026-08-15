@@ -1,6 +1,6 @@
-import type { SchedulingProviderCapabilities } from '../domain/capabilities';
-import type { SchedulingProviderKey, SchedulingSourceOfTruth } from '../domain/models';
-import type { IsoInstant } from '../domain/time';
+import type { SchedulingProviderCapabilities } from '../domain/capabilities.ts';
+import type { SchedulingProviderKey, SchedulingSourceOfTruth } from '../domain/models.ts';
+import type { IsoInstant } from '../domain/time.ts';
 
 export type SchedulingConnectionStatus =
   | 'pending'

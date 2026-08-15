@@ -7,8 +7,8 @@ import type {
   SchedulingProviderKey,
   SchedulingSourceOfTruth,
   SchedulingSyncState,
-} from '../domain/models';
-import type { IsoInstant } from '../domain/time';
+} from '../domain/models.ts';
+import type { IsoInstant } from '../domain/time.ts';
 
 export type SchedulingEventOrigin =
   | 'agenda_ui'

@@ -1,4 +1,4 @@
-import type { SchedulingProviderCapability } from '../domain/capabilities';
+import type { SchedulingProviderCapability } from '../domain/capabilities.ts';
 import type {
   SchedulingAppointment,
   SchedulingBlock,
@@ -8,7 +8,7 @@ import type {
   SchedulingProfessionalRules,
   SchedulingServiceItem,
   SchedulingSlot,
-} from '../domain/models';
+} from '../domain/models.ts';
 import type {
   CancelAppointmentInput,
   ConfirmAppointmentInput,
@@ -29,13 +29,13 @@ import type {
   RescheduleAppointmentInput,
   SchedulingContext,
   UpdateAppointmentStatusInput,
-} from '../domain/inputs';
+} from '../domain/inputs.ts';
 import {
   normalizeSchedulingError,
   SchedulingCapabilityNotSupportedError,
   SchedulingValidationError,
-} from '../errors/SchedulingError';
-import type { SchedulingProvider, SchedulingProviderResolver } from '../providers/SchedulingProvider';
+} from '../errors/SchedulingError.ts';
+import type { SchedulingProvider, SchedulingProviderResolver } from '../providers/SchedulingProvider.ts';
 
 type SchedulingProviderDependency = SchedulingProvider | SchedulingProviderResolver;
 

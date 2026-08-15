@@ -1,5 +1,5 @@
-import type { SchedulingProviderKey } from '../domain/models';
-import type { IsoInstant } from '../domain/time';
+import type { SchedulingProviderKey } from '../domain/models.ts';
+import type { IsoInstant } from '../domain/time.ts';
 
 export type SchedulingReconciliationStatus = 'idle' | 'running' | 'error';
 export type SchedulingProviderEventStatus = 'pending' | 'processed' | 'ignored' | 'error';

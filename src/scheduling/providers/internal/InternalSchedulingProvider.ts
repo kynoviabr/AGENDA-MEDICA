@@ -1,4 +1,4 @@
-import { createSchedulingProviderCapabilities } from '../../domain/capabilities';
+import { createSchedulingProviderCapabilities } from '../../domain/capabilities.ts';
 import type {
   CancelAppointmentInput,
   ConfirmAppointmentInput,
@@ -19,7 +19,7 @@ import type {
   RescheduleAppointmentInput,
   SchedulingContext,
   UpdateAppointmentStatusInput,
-} from '../../domain/inputs';
+} from '../../domain/inputs.ts';
 import type {
   SchedulingAppointment,
   SchedulingBlock,
@@ -29,11 +29,11 @@ import type {
   SchedulingProfessionalRules,
   SchedulingServiceItem,
   SchedulingSlot,
-} from '../../domain/models';
-import { SchedulingNotFoundError, SchedulingValidationError } from '../../errors/SchedulingError';
-import type { SchedulingProvider } from '../SchedulingProvider';
-import type { InternalAppointmentRecord, InternalSchedulingDataSource } from './InternalSchedulingDataSource';
-import { mapInternalSchedulingError } from './internalSchedulingErrors';
+} from '../../domain/models.ts';
+import { SchedulingNotFoundError, SchedulingValidationError } from '../../errors/SchedulingError.ts';
+import type { SchedulingProvider } from '../SchedulingProvider.ts';
+import type { InternalAppointmentRecord, InternalSchedulingDataSource } from './InternalSchedulingDataSource.ts';
+import { mapInternalSchedulingError } from './internalSchedulingErrors.ts';
 import {
   mapInternalAppointment,
   mapInternalBlock,
@@ -43,7 +43,7 @@ import {
   mapInternalProfessionalRules,
   mapInternalService,
   mapInternalSlot,
-} from './internalSchedulingMappers';
+} from './internalSchedulingMappers.ts';
 
 export const internalSchedulingCapabilities = createSchedulingProviderCapabilities([
   'locations',

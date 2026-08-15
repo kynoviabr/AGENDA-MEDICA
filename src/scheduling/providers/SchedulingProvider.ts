@@ -1,4 +1,4 @@
-import type { SchedulingProviderCapabilities } from '../domain/capabilities';
+import type { SchedulingProviderCapabilities } from '../domain/capabilities.ts';
 import type {
   SchedulingAppointment,
   SchedulingBlock,
@@ -9,7 +9,7 @@ import type {
   SchedulingProviderType,
   SchedulingServiceItem,
   SchedulingSlot,
-} from '../domain/models';
+} from '../domain/models.ts';
 import type {
   CancelAppointmentInput,
   ConfirmAppointmentInput,
@@ -30,7 +30,7 @@ import type {
   RescheduleAppointmentInput,
   SchedulingContext,
   UpdateAppointmentStatusInput,
-} from '../domain/inputs';
+} from '../domain/inputs.ts';
 
 export interface SchedulingCatalogOperations {
   listLocations(context: SchedulingContext, input: ListLocationsInput): Promise<SchedulingLocation[]>;
