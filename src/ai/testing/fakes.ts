@@ -1,4 +1,13 @@
 import type { AiClinicConfig, AiConversationMessage, AiExecutionContext } from '../domain/models.ts';
+import {
+  createEmptyConversationState,
+  type AiConversationInterpretation,
+  type AiConversationInterpreter,
+  type AiConversationInterpreterRequest,
+  type AiConversationState,
+  type AiConversationStateRepository,
+  type AiPersistedConversationState,
+} from '../domain/conversation.ts';
 import type {
   AiBinaryInput,
   AiLlmProvider,
@@ -51,6 +60,45 @@ export class FakeVisionProvider implements AiVisionProvider {
 export class FakeAiClinicConfigLoader implements AiClinicConfigLoader {
   constructor(private readonly config: AiClinicConfig) {}
   async load(_context: AiExecutionContext): Promise<AiClinicConfig> { return this.config; }
+}
+
+export class FakeConversationInterpreter implements AiConversationInterpreter {
+  readonly name = 'fake_conversation';
+  readonly requests: AiConversationInterpreterRequest[] = [];
+  constructor(
+    private readonly result: AiConversationInterpretation | Error | ((request: AiConversationInterpreterRequest) => AiConversationInterpretation),
+  ) {}
+  async interpret(request: AiConversationInterpreterRequest): Promise<AiConversationInterpretation> {
+    this.requests.push(request);
+    if (this.result instanceof Error) throw this.result;
+    return typeof this.result === 'function' ? this.result(request) : this.result;
+  }
+}
+
+export class InMemoryAiConversationStateRepository implements AiConversationStateRepository {
+  private value: AiPersistedConversationState;
+  saveCalls = 0;
+  conflictsRemaining = 0;
+  constructor(state: AiConversationState = createEmptyConversationState(), revision = 0) {
+    this.value = { state: structuredClone(state), revision };
+  }
+  async load(_clinicId: string, _conversationId: string): Promise<AiPersistedConversationState> {
+    return structuredClone(this.value);
+  }
+  async saveIfRevision(
+    _clinicId: string, _conversationId: string, expectedRevision: number, state: AiConversationState,
+  ): Promise<AiPersistedConversationState | null> {
+    this.saveCalls += 1;
+    if (this.conflictsRemaining > 0) {
+      this.conflictsRemaining -= 1;
+      this.value = { ...this.value, revision: this.value.revision + 1 };
+      return null;
+    }
+    if (this.value.revision !== expectedRevision) return null;
+    this.value = { state: structuredClone(state), revision: expectedRevision + 1 };
+    return structuredClone(this.value);
+  }
+  snapshot() { return structuredClone(this.value); }
 }
 
 export class FakeAiConversationHistoryLoader implements AiConversationHistoryLoader {

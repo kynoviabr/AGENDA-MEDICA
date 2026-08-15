@@ -1,6 +1,6 @@
 import type { AiExecutionContext, AiMessageType } from '../domain/models.ts';
 
-export type AiUsageRequestType = 'llm_response' | 'transcription' | 'vision' | 'document_preprocessing';
+export type AiUsageRequestType = 'llm_response' | 'conversation_interpretation' | 'transcription' | 'vision' | 'document_preprocessing';
 
 export interface AiUsageEvent {
   context: AiExecutionContext;

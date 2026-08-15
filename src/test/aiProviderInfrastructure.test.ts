@@ -3,9 +3,11 @@ import {
   AiRateLimitError,
   AiValidationError,
   OpenAiLlmProvider,
+  OpenAiConversationInterpreter,
   OpenAiTranscriptionProvider,
   OpenAiVisionProvider,
   executeAiProviderCall,
+  createEmptyConversationState,
 } from '@/ai';
 
 describe('AI provider infrastructure', () => {
@@ -38,7 +40,7 @@ describe('AI provider infrastructure', () => {
   });
 
   it('uses the Responses API with structured output and no SDK dependency', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       model: 'synthetic-openai-model', status: 'completed',
       output_text: JSON.stringify({
         response_text: 'Olá!', detected_language: 'pt-BR', requires_clarification: false,
@@ -60,7 +62,7 @@ describe('AI provider infrastructure', () => {
   });
 
   it('uses the isolated transcription endpoint with transient in-memory bytes', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       text: 'Áudio sintético', language: 'pt', duration: 2.5,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     const provider = new OpenAiTranscriptionProvider({ apiKey: 'synthetic-test-key', fetch: fetchMock }, 'synthetic-stt');
@@ -72,7 +74,7 @@ describe('AI provider infrastructure', () => {
   });
 
   it('uses structured vision output for administrative classification', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       model: 'synthetic-vision',
       output_text: JSON.stringify({ category: 'insurance_card', description: 'Carteirinha administrativa.' }),
       usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 },
@@ -84,5 +86,37 @@ describe('AI provider infrastructure', () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(body.input[0].content[1].image_url).toMatch(/^data:image\/png;base64,/);
     expect(body.tools).toBeUndefined();
+  });
+
+  it('interprets conversation turns through a strict versioned schema without tools', async () => {
+    const structured = {
+      schema_version: 1, intent: 'scheduling_request', confidence: 'high',
+      operations: [], excluded_professionals: [], excluded_insurances: [], excluded_time_preferences: [],
+      ambiguity: null, reference_expression: null, is_correction: false, is_small_talk: false,
+      ends_current_task: false, requires_handoff: false, safety_disposition: 'allowed',
+      response_text: 'Com qual profissional você gostaria de marcar?',
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      model: 'synthetic-conversation', output_text: JSON.stringify(structured),
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const provider = new OpenAiConversationInterpreter(
+      { apiKey: 'synthetic-test-key', fetch: fetchMock }, 'synthetic-conversation',
+    );
+    const result = await provider.interpret({
+      state: createEmptyConversationState(), history: [],
+      message: {
+        clinicId: 'clinic-a', conversationId: 'conversation-a', originalMessageId: 'message-a', originalType: 'text',
+        normalizedText: 'Quero marcar', attachments: [], understandingMetadata: { needsClarification: false },
+        processingMetrics: [], preprocessingLatencyMs: 0,
+      },
+      clinicContext: 'Clínica sintética', preferredLanguage: 'pt-BR', responseStyle: 'curta',
+      timezone: 'America/Sao_Paulo', now: '2026-08-15T15:00:00.000Z',
+    });
+    expect(result).toMatchObject({ intent: 'scheduling_request', schemaVersion: 1, usage: { totalTokens: 12 } });
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.text.format).toMatchObject({ type: 'json_schema', strict: true, name: 'aura_conversation_turn_v1' });
+    expect(body.tools).toBeUndefined();
+    expect(body.store).toBe(false);
   });
 });

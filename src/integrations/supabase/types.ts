@@ -4491,6 +4491,7 @@ export type Database = {
           ai_enabled: boolean
           clinic_id: string
           contact_name: string | null
+          conversation_state: Json
           created_at: string
           id: string
           last_inbound_at: string | null
@@ -4499,6 +4500,8 @@ export type Database = {
           lead_id: string | null
           metadata: Json
           phone: string
+          state_revision: number
+          state_updated_at: string | null
           status: string
           updated_at: string
         }
@@ -4506,6 +4509,7 @@ export type Database = {
           ai_enabled?: boolean
           clinic_id: string
           contact_name?: string | null
+          conversation_state?: Json
           created_at?: string
           id?: string
           last_inbound_at?: string | null
@@ -4514,6 +4518,8 @@ export type Database = {
           lead_id?: string | null
           metadata?: Json
           phone: string
+          state_revision?: number
+          state_updated_at?: string | null
           status?: string
           updated_at?: string
         }
@@ -4521,6 +4527,7 @@ export type Database = {
           ai_enabled?: boolean
           clinic_id?: string
           contact_name?: string | null
+          conversation_state?: Json
           created_at?: string
           id?: string
           last_inbound_at?: string | null
@@ -4529,6 +4536,8 @@ export type Database = {
           lead_id?: string | null
           metadata?: Json
           phone?: string
+          state_revision?: number
+          state_updated_at?: string | null
           status?: string
           updated_at?: string
         }
@@ -5663,6 +5672,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_whatsapp_ai_conversation_state: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_expected_revision: number
+          p_state: Json
+        }
+        Returns: Json
       }
       upsert_contract_financial_forecast: {
         Args: { p_contract_id: string; p_force?: boolean }

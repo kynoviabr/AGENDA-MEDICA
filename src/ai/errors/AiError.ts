@@ -6,7 +6,10 @@ export type AiErrorCode =
   | 'AI_TRANSCRIPTION_FAILED'
   | 'AI_VISION_FAILED'
   | 'AI_SAFETY_BLOCKED'
-  | 'AI_TIMEOUT';
+  | 'AI_TIMEOUT'
+  | 'AI_CONVERSATION_STATE_INVALID'
+  | 'AI_CONVERSATION_INTERPRETATION_FAILED'
+  | 'AI_CONVERSATION_STATE_CONFLICT';
 
 export class AiError extends Error {
   readonly code: AiErrorCode;
@@ -45,6 +48,21 @@ export class AiSafetyError extends AiError {
 }
 export class AiTimeoutError extends AiError {
   constructor(originalError?: unknown) { super('AI_TIMEOUT', 'AI provider request timed out.', true, originalError); }
+}
+export class AiConversationStateError extends AiError {
+  constructor(message = 'Conversation state is invalid.', originalError?: unknown) {
+    super('AI_CONVERSATION_STATE_INVALID', message, false, originalError);
+  }
+}
+export class AiConversationInterpretationError extends AiError {
+  constructor(originalError?: unknown) {
+    super('AI_CONVERSATION_INTERPRETATION_FAILED', 'Conversation turn could not be interpreted safely.', false, originalError);
+  }
+}
+export class AiConversationStateConflictError extends AiError {
+  constructor(originalError?: unknown) {
+    super('AI_CONVERSATION_STATE_CONFLICT', 'Conversation state changed concurrently.', true, originalError);
+  }
 }
 
 export function normalizeAiProviderError(error: unknown): AiError {

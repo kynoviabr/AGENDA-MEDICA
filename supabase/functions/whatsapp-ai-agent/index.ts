@@ -7,15 +7,17 @@ import {
   DEFAULT_AI_MODEL_CONFIGURATION,
   DocumentMessageProcessor,
   ImageMessageProcessor,
-  OpenAiLlmProvider,
+  OpenAiConversationInterpreter,
   OpenAiTranscriptionProvider,
   OpenAiVisionProvider,
   SupabaseAiClinicConfigLoader,
   SupabaseAiConversationHistoryLoader,
+  SupabaseAiConversationStateRepository,
   SupabaseAiUsageRecorder,
   TextMessageProcessor,
   WhatsappAuraAiBridge,
   AuraAiOrchestrator,
+  AuraConversationEngine,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -293,16 +295,21 @@ function createAuraBridge(
   });
   const aiClient = admin as unknown as AiSupabaseClientLike;
   const usageRecorder = new SupabaseAiUsageRecorder(aiClient);
-  const orchestrator = new AuraAiOrchestrator(
-    new OpenAiLlmProvider({ apiKey }),
-    new SupabaseAiClinicConfigLoader(aiClient),
+  const conversationModel = modelOverride || Deno.env.get("OPENAI_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.llmModel;
+  const conversationEngine = new AuraConversationEngine(
+    new OpenAiConversationInterpreter({ apiKey }, conversationModel),
+    new SupabaseAiConversationStateRepository(aiClient),
     new SupabaseAiConversationHistoryLoader(aiClient),
     usageRecorder,
     {
-      model: modelOverride || Deno.env.get("OPENAI_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.llmModel,
       historyLimit: DEFAULT_AI_MODEL_CONFIGURATION.historyLimit,
       executionPolicy: { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
     },
+  );
+  const orchestrator = new AuraAiOrchestrator(
+    conversationEngine,
+    new SupabaseAiClinicConfigLoader(aiClient),
+    usageRecorder,
   );
   return new WhatsappAuraAiBridge(ingestion, orchestrator, usageRecorder);
 }
@@ -510,7 +517,9 @@ serve(async (req) => {
           if (!decision.sendAura) {
             console.info("aura_ai_shadow_completed", {
               correlationId, clinicId, conversationId: conversation.id,
-              messageType: inbound.messageType, safetyDisposition: auraReply.safetyDisposition,
+              messageType: inbound.messageType, intent: auraReply.conversationIntent,
+              needsClarification: auraReply.requiresClarification,
+              safetyDisposition: auraReply.safetyDisposition,
             });
           }
         } catch (error) {

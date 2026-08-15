@@ -20,6 +20,7 @@ export class TextMessageProcessor implements AiMessageProcessor {
       conversationId: message.conversationId,
       originalMessageId: message.id,
       originalType: 'text',
+      receivedAt: message.receivedAt,
       normalizedText,
       attachments: [],
       understandingMetadata: { needsClarification: false },

@@ -13,6 +13,7 @@ export class DocumentMessageProcessor implements AiMessageProcessor {
       conversationId: message.conversationId,
       originalMessageId: message.id,
       originalType: 'document',
+      receivedAt: message.receivedAt,
       normalizedText: supported
         ? 'O paciente enviou um documento. A leitura completa deste formato ainda requer atendimento da equipe.'
         : 'O paciente enviou um documento em formato ainda não suportado.',

@@ -75,6 +75,7 @@ export interface AiNormalizedMessage {
   conversationId: string;
   originalMessageId: string;
   originalType: AiMessageType;
+  receivedAt?: string;
   normalizedText: string;
   attachments: readonly AiNormalizedAttachment[];
   understandingMetadata: Readonly<{
@@ -104,6 +105,8 @@ export interface AiResponse {
   detectedLanguage?: string;
   requiresClarification: boolean;
   requiresHandoff: boolean;
+  conversationIntent?: string;
+  readyForToolExecution?: boolean;
 }
 
 export interface AiConversationMessage {
@@ -119,5 +122,6 @@ export interface AiClinicConfig {
   enabled: boolean;
   preferredLanguage: string;
   responseStyle: string;
+  timezone?: string;
   administrativeContext?: readonly string[];
 }

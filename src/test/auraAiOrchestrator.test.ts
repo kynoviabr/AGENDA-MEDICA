@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   AuraAiOrchestrator,
+  AuraConversationEngine,
   AiMessageIngestionService,
   AiTranscriptionError,
   FakeAiClinicConfigLoader,
   FakeAiConversationHistoryLoader,
-  FakeLlmProvider,
+  FakeConversationInterpreter,
+  InMemoryAiConversationStateRepository,
   InMemoryAiUsageRecorder,
+  conversationInterpretation,
   WhatsappAuraAiBridge,
   decideWhatsappAiExecution,
   type AiExecutionContext,
@@ -23,19 +26,26 @@ const normalized: AiNormalizedMessage = {
   processingMetrics: [], preprocessingLatencyMs: 1,
 };
 
-function orchestrator(provider = new FakeLlmProvider(), history = new FakeAiConversationHistoryLoader()) {
+function orchestrator(
+  provider = new FakeConversationInterpreter(conversationInterpretation('greeting', { operations: [] }, {
+    isSmallTalk: true, responseText: 'Olá! Como posso ajudar?'
+  })),
+  history = new FakeAiConversationHistoryLoader(),
+) {
   const usage = new InMemoryAiUsageRecorder();
+  const conversationEngine = new AuraConversationEngine(
+    provider, new InMemoryAiConversationStateRepository(), history, usage,
+    { executionPolicy: { timeoutMs: 50, maxAttempts: 1 } },
+  );
   return {
     provider, usage,
     value: new AuraAiOrchestrator(
-      provider,
+      conversationEngine,
       new FakeAiClinicConfigLoader({
         clinicId: 'clinic-a', clinicName: 'Clínica Sintética', enabled: true,
-        preferredLanguage: 'pt-BR', responseStyle: 'curta e acolhedora',
+        preferredLanguage: 'pt-BR', responseStyle: 'curta e acolhedora', timezone: 'America/Sao_Paulo',
       }),
-      history,
       usage,
-      { model: 'fake-model', executionPolicy: { timeoutMs: 50, maxAttempts: 1 } },
     ),
   };
 }
@@ -44,9 +54,9 @@ describe('AuraAiOrchestrator', () => {
   it('produces a short natural response through a provider-neutral LLM', async () => {
     const { value, usage } = orchestrator();
     await expect(value.respond(context, normalized)).resolves.toMatchObject({
-      text: 'Olá! Como posso ajudar?', provider: 'fake_llm', safetyDisposition: 'allowed',
+      text: 'Olá! Como posso ajudar?', provider: 'fake_conversation', safetyDisposition: 'allowed',
     });
-    expect(usage.events).toEqual([expect.objectContaining({ requestType: 'llm_response', outcome: 'success' })]);
+    expect(usage.events).toEqual([expect.objectContaining({ requestType: 'conversation_interpretation', outcome: 'success' })]);
     expect(usage.events[0].context.clinicId).toBe('clinic-a');
   });
 
@@ -55,9 +65,9 @@ describe('AuraAiOrchestrator', () => {
       { clinicId: 'clinic-b', conversationId: 'conversation-b', role: 'user', text: 'SEGREDO B' },
       { clinicId: 'clinic-a', conversationId: 'conversation-a', role: 'assistant', text: 'Histórico A' },
     ]);
-    const { value, provider } = orchestrator(new FakeLlmProvider(), history);
+    const { value, provider } = orchestrator(undefined, history);
     await value.respond(context, normalized);
-    expect(provider.requests[0].conversation).toEqual([
+    expect(provider.requests[0].history).toEqual([
       { clinicId: 'clinic-a', conversationId: 'conversation-a', role: 'assistant', text: 'Histórico A' },
     ]);
     expect(JSON.stringify(provider.requests[0])).not.toContain('SEGREDO B');
@@ -74,7 +84,7 @@ describe('AuraAiOrchestrator', () => {
     const { value, provider } = orchestrator();
     const response = await value.respond(context, { ...normalized, normalizedText: 'Vocês atendem Unimed?' });
     expect(response.text).toContain('confirmar');
-    expect(provider.requests).toHaveLength(0);
+    expect(provider.requests).toHaveLength(1);
   });
 
   it('does not diagnose a lesion', async () => {
@@ -100,7 +110,7 @@ describe('AuraAiOrchestrator', () => {
     });
     expect(usage.events).toHaveLength(2);
     expect(usage.events.every((event) => event.context.correlationId === context.correlationId)).toBe(true);
-    expect(usage.events.map((event) => event.requestType)).toEqual(['transcription', 'llm_response']);
+    expect(usage.events.map((event) => event.requestType)).toEqual(['transcription', 'conversation_interpretation']);
   });
 
   it('keeps legacy as default and guarantees exactly one outbound engine in every mode', () => {

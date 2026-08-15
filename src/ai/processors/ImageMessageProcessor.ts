@@ -38,6 +38,7 @@ export class ImageMessageProcessor implements AiMessageProcessor {
       conversationId: message.conversationId,
       originalMessageId: message.id,
       originalType: 'image',
+      receivedAt: message.receivedAt,
       normalizedText: restricted || result.description,
       attachments: [{
         mediaId: message.media.mediaId, mimeType: media.mimeType, size: media.size,

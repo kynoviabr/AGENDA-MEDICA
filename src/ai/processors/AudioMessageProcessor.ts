@@ -39,6 +39,7 @@ export class AudioMessageProcessor implements AiMessageProcessor {
       conversationId: message.conversationId,
       originalMessageId: message.id,
       originalType: 'audio',
+      receivedAt: message.receivedAt,
       normalizedText: normalizedText || 'O áudio recebido não pôde ser compreendido.',
       attachments: [{
         mediaId: message.media.mediaId, mimeType: media.mimeType, size: media.size,
