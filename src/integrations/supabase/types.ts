@@ -464,6 +464,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -473,21 +474,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         Insert: {
@@ -499,6 +518,7 @@ export type Database = {
           clinic_id: string
           completed_at?: string | null
           confirmed_at?: string | null
+          connection_id?: string | null
           contract_id?: string | null
           contract_item_id?: string | null
           created_at?: string
@@ -508,21 +528,39 @@ export type Database = {
           credit_decision_id?: string | null
           duration_minutes?: number
           end_time: string
+          event_origin?: string
+          external_appointment_id?: string | null
+          external_etag?: string | null
+          external_version?: string | null
           health_insurance_id?: string | null
           id?: string
           is_batch?: boolean
+          is_tombstone?: boolean
+          last_provider_seen_at?: string | null
+          last_sync_error_at?: string | null
+          last_sync_error_code?: string | null
+          last_sync_error_message?: string | null
+          last_synced_at?: string | null
           lead_id?: string | null
           location_id?: string | null
           no_show_reason?: string | null
           notes?: string | null
           patient_id?: string | null
           professional_id?: string | null
+          provider_type?: string
+          raw_provider_status?: string | null
           rescheduled_from?: string | null
           rescheduled_to?: string | null
           scheduled_at?: string | null
+          source_of_truth?: string
           start_time: string
           status?: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at?: string | null
+          sync_conflict_code?: string | null
+          sync_state?: string
+          tombstoned_at?: string | null
           treatment_id?: string | null
+          unmapped_entity_types?: string[]
           updated_at?: string
         }
         Update: {
@@ -534,6 +572,7 @@ export type Database = {
           clinic_id?: string
           completed_at?: string | null
           confirmed_at?: string | null
+          connection_id?: string | null
           contract_id?: string | null
           contract_item_id?: string | null
           created_at?: string
@@ -543,21 +582,39 @@ export type Database = {
           credit_decision_id?: string | null
           duration_minutes?: number
           end_time?: string
+          event_origin?: string
+          external_appointment_id?: string | null
+          external_etag?: string | null
+          external_version?: string | null
           health_insurance_id?: string | null
           id?: string
           is_batch?: boolean
+          is_tombstone?: boolean
+          last_provider_seen_at?: string | null
+          last_sync_error_at?: string | null
+          last_sync_error_code?: string | null
+          last_sync_error_message?: string | null
+          last_synced_at?: string | null
           lead_id?: string | null
           location_id?: string | null
           no_show_reason?: string | null
           notes?: string | null
           patient_id?: string | null
           professional_id?: string | null
+          provider_type?: string
+          raw_provider_status?: string | null
           rescheduled_from?: string | null
           rescheduled_to?: string | null
           scheduled_at?: string | null
+          source_of_truth?: string
           start_time?: string
           status?: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at?: string | null
+          sync_conflict_code?: string | null
+          sync_state?: string
+          tombstoned_at?: string | null
           treatment_id?: string | null
+          unmapped_entity_types?: string[]
           updated_at?: string
         }
         Relationships: [
@@ -567,6 +624,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clinics"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
           },
           {
             foreignKeyName: "appointments_contract_id_fkey"
@@ -3481,6 +3545,144 @@ export type Database = {
           },
         ]
       }
+      scheduling_provider_events: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          event_type: string
+          external_appointment_id: string | null
+          external_event_id: string | null
+          id: string
+          payload_hash: string | null
+          processed_at: string | null
+          processing_status: string
+          provider_type: string
+          received_at: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          event_type: string
+          external_appointment_id?: string | null
+          external_event_id?: string | null
+          id?: string
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider_type: string
+          received_at?: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          event_type?: string
+          external_appointment_id?: string | null
+          external_event_id?: string | null
+          id?: string
+          payload_hash?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider_type?: string
+          received_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_provider_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_provider_events_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_reconciliation_states: {
+        Row: {
+          checkpoint: string | null
+          checkpoint_metadata: Json
+          clinic_id: string
+          connection_id: string
+          consecutive_failures: number
+          created_at: string
+          last_completed_at: string | null
+          last_error_at: string | null
+          last_error_code: string | null
+          last_error_message: string | null
+          last_started_at: string | null
+          last_success_at: string | null
+          status: string
+          sync_token: string | null
+          updated_at: string
+        }
+        Insert: {
+          checkpoint?: string | null
+          checkpoint_metadata?: Json
+          clinic_id: string
+          connection_id: string
+          consecutive_failures?: number
+          created_at?: string
+          last_completed_at?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_error_message?: string | null
+          last_started_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          sync_token?: string | null
+          updated_at?: string
+        }
+        Update: {
+          checkpoint?: string | null
+          checkpoint_metadata?: Json
+          clinic_id?: string
+          connection_id?: string
+          consecutive_failures?: number
+          created_at?: string
+          last_completed_at?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_error_message?: string | null
+          last_started_at?: string | null
+          last_success_at?: string | null
+          status?: string
+          sync_token?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_reconciliation_states_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reconciliation_states_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
       scheduling_service_mappings: {
         Row: {
           clinic_id: string
@@ -4657,6 +4859,7 @@ export type Database = {
               clinic_id: string
               completed_at: string | null
               confirmed_at: string | null
+              connection_id: string | null
               contract_id: string | null
               contract_item_id: string | null
               created_at: string
@@ -4666,21 +4869,39 @@ export type Database = {
               credit_decision_id: string | null
               duration_minutes: number
               end_time: string
+              event_origin: string
+              external_appointment_id: string | null
+              external_etag: string | null
+              external_version: string | null
               health_insurance_id: string | null
               id: string
               is_batch: boolean
+              is_tombstone: boolean
+              last_provider_seen_at: string | null
+              last_sync_error_at: string | null
+              last_sync_error_code: string | null
+              last_sync_error_message: string | null
+              last_synced_at: string | null
               lead_id: string | null
               location_id: string | null
               no_show_reason: string | null
               notes: string | null
               patient_id: string | null
               professional_id: string | null
+              provider_type: string
+              raw_provider_status: string | null
               rescheduled_from: string | null
               rescheduled_to: string | null
               scheduled_at: string | null
+              source_of_truth: string
               start_time: string
               status: Database["public"]["Enums"]["appointment_status"]
+              sync_conflict_at: string | null
+              sync_conflict_code: string | null
+              sync_state: string
+              tombstoned_at: string | null
               treatment_id: string | null
+              unmapped_entity_types: string[]
               updated_at: string
             }
             SetofOptions: {
@@ -4706,6 +4927,7 @@ export type Database = {
               clinic_id: string
               completed_at: string | null
               confirmed_at: string | null
+              connection_id: string | null
               contract_id: string | null
               contract_item_id: string | null
               created_at: string
@@ -4715,21 +4937,39 @@ export type Database = {
               credit_decision_id: string | null
               duration_minutes: number
               end_time: string
+              event_origin: string
+              external_appointment_id: string | null
+              external_etag: string | null
+              external_version: string | null
               health_insurance_id: string | null
               id: string
               is_batch: boolean
+              is_tombstone: boolean
+              last_provider_seen_at: string | null
+              last_sync_error_at: string | null
+              last_sync_error_code: string | null
+              last_sync_error_message: string | null
+              last_synced_at: string | null
               lead_id: string | null
               location_id: string | null
               no_show_reason: string | null
               notes: string | null
               patient_id: string | null
               professional_id: string | null
+              provider_type: string
+              raw_provider_status: string | null
               rescheduled_from: string | null
               rescheduled_to: string | null
               scheduled_at: string | null
+              source_of_truth: string
               start_time: string
               status: Database["public"]["Enums"]["appointment_status"]
+              sync_conflict_at: string | null
+              sync_conflict_code: string | null
+              sync_state: string
+              tombstoned_at: string | null
               treatment_id: string | null
+              unmapped_entity_types: string[]
               updated_at: string
             }
             SetofOptions: {
@@ -4750,6 +4990,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -4759,21 +5000,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         SetofOptions: {
@@ -4809,6 +5068,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -4818,21 +5078,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         SetofOptions: {
@@ -5085,6 +5363,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -5094,21 +5373,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         SetofOptions: {
@@ -5139,6 +5436,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -5148,21 +5446,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         SetofOptions: {
@@ -5206,6 +5522,7 @@ export type Database = {
           clinic_id: string
           completed_at: string | null
           confirmed_at: string | null
+          connection_id: string | null
           contract_id: string | null
           contract_item_id: string | null
           created_at: string
@@ -5215,21 +5532,39 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
+          event_origin: string
+          external_appointment_id: string | null
+          external_etag: string | null
+          external_version: string | null
           health_insurance_id: string | null
           id: string
           is_batch: boolean
+          is_tombstone: boolean
+          last_provider_seen_at: string | null
+          last_sync_error_at: string | null
+          last_sync_error_code: string | null
+          last_sync_error_message: string | null
+          last_synced_at: string | null
           lead_id: string | null
           location_id: string | null
           no_show_reason: string | null
           notes: string | null
           patient_id: string | null
           professional_id: string | null
+          provider_type: string
+          raw_provider_status: string | null
           rescheduled_from: string | null
           rescheduled_to: string | null
           scheduled_at: string | null
+          source_of_truth: string
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"]
+          sync_conflict_at: string | null
+          sync_conflict_code: string | null
+          sync_state: string
+          tombstoned_at: string | null
           treatment_id: string | null
+          unmapped_entity_types: string[]
           updated_at: string
         }
         SetofOptions: {

@@ -1,9 +1,6 @@
 import type { SchedulingProviderCapabilities } from '../domain/capabilities';
-import type { SchedulingProviderType, SchedulingSourceOfTruth } from '../domain/models';
+import type { SchedulingProviderKey, SchedulingSourceOfTruth } from '../domain/models';
 import type { IsoInstant } from '../domain/time';
-
-/** Known adapters stay strongly typed while persisted provider keys remain extensible. */
-export type SchedulingProviderKey = SchedulingProviderType | (string & {});
 
 export type SchedulingConnectionStatus =
   | 'pending'

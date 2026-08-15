@@ -6,9 +6,21 @@ export type SchedulingProviderType =
   | 'doctoralia'
   | 'feegow';
 
+/** Known adapters stay strongly typed while persisted provider keys remain extensible. */
+export type SchedulingProviderKey = SchedulingProviderType | (string & {});
+
 export type SchedulingSourceOfTruth = 'aura' | 'external_provider';
 
-export type SchedulingSyncState = 'not_applicable' | 'pending' | 'synced' | 'failed';
+export type SchedulingSyncState =
+  | 'not_applicable'
+  | 'synced'
+  | 'pending_create'
+  | 'pending_update'
+  | 'pending_cancel'
+  | 'conflict'
+  | 'error'
+  | 'stale'
+  | 'tombstoned';
 
 export type SchedulingSource =
   | 'agenda_ui'
@@ -99,7 +111,8 @@ export interface SchedulingSlot extends TimeRange {
 
 export interface SchedulingAppointment extends TimeRange {
   id: string;
-  provider: SchedulingProviderType;
+  provider: SchedulingProviderKey;
+  connectionId?: string;
   externalId?: string;
   sourceOfTruth: SchedulingSourceOfTruth;
   syncState?: SchedulingSyncState;
@@ -116,6 +129,12 @@ export interface SchedulingAppointment extends TimeRange {
   status: SchedulingAppointmentStatus;
   confirmationStatus: SchedulingConfirmationStatus;
   rawProviderStatus?: string;
+  externalVersion?: string;
+  externalEtag?: string;
+  lastSyncedAt?: IsoInstant;
+  lastProviderSeenAt?: IsoInstant;
+  isTombstone?: boolean;
+  tombstonedAt?: IsoInstant;
   notes?: string;
   cancellationReason?: string;
   rescheduledFromId?: string;
