@@ -3163,6 +3163,391 @@ export type Database = {
           },
         ]
       }
+      scheduling_connection_professionals: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          professional_id: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          professional_id: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          professional_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_connection_professionals_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_connection_professionals_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "scheduling_connection_professionals_professional_clinic_fkey"
+            columns: ["professional_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_insurance_mappings: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          external_id: string
+          external_name: string | null
+          external_parent_id: string | null
+          health_insurance_id: string
+          id: string
+          last_verified_at: string | null
+          metadata: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          external_id: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          health_insurance_id: string
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          external_id?: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          health_insurance_id?: string
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_insurance_mappings_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_insurance_mappings_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "scheduling_insurance_mappings_insurance_clinic_fkey"
+            columns: ["health_insurance_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "health_insurances"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_location_mappings: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          external_id: string
+          external_name: string | null
+          external_parent_id: string | null
+          id: string
+          last_verified_at: string | null
+          location_id: string
+          metadata: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          external_id: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          location_id: string
+          metadata?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          external_id?: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          location_id?: string
+          metadata?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_location_mappings_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_location_mappings_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "scheduling_location_mappings_location_clinic_fkey"
+            columns: ["location_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinic_locations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_professional_mappings: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          external_id: string
+          external_name: string | null
+          external_parent_id: string | null
+          id: string
+          last_verified_at: string | null
+          metadata: Json
+          professional_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          external_id: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          professional_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          external_id?: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          professional_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_professional_mappings_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_professional_mappings_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "scheduling_professional_mappings_professional_clinic_fkey"
+            columns: ["professional_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_provider_connections: {
+        Row: {
+          capabilities: Json
+          clinic_id: string
+          connected_at: string | null
+          created_at: string
+          disconnected_at: string | null
+          display_name: string
+          external_account_id: string | null
+          external_account_name: string | null
+          id: string
+          is_default: boolean
+          last_verified_at: string | null
+          metadata: Json
+          provider_type: string
+          source_of_truth: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          capabilities?: Json
+          clinic_id: string
+          connected_at?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          display_name: string
+          external_account_id?: string | null
+          external_account_name?: string | null
+          id?: string
+          is_default?: boolean
+          last_verified_at?: string | null
+          metadata?: Json
+          provider_type: string
+          source_of_truth: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          capabilities?: Json
+          clinic_id?: string
+          connected_at?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          display_name?: string
+          external_account_id?: string | null
+          external_account_name?: string | null
+          id?: string
+          is_default?: boolean
+          last_verified_at?: string | null
+          metadata?: Json
+          provider_type?: string
+          source_of_truth?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_provider_connections_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_service_mappings: {
+        Row: {
+          clinic_id: string
+          connection_id: string
+          created_at: string
+          external_id: string
+          external_name: string | null
+          external_parent_id: string | null
+          id: string
+          last_verified_at: string | null
+          metadata: Json
+          status: string
+          treatment_id: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          connection_id: string
+          created_at?: string
+          external_id: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          status?: string
+          treatment_id: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          connection_id?: string
+          created_at?: string
+          external_id?: string
+          external_name?: string | null
+          external_parent_id?: string | null
+          id?: string
+          last_verified_at?: string | null
+          metadata?: Json
+          status?: string
+          treatment_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_service_mappings_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_service_mappings_connection_clinic_fkey"
+            columns: ["connection_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_provider_connections"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "scheduling_service_mappings_treatment_id_fkey"
+            columns: ["treatment_id"]
+            isOneToOne: false
+            referencedRelation: "treatments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_feedback: {
         Row: {
           clinic_id: string
