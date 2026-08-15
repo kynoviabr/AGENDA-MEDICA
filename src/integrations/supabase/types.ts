@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.15"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -453,8 +473,8 @@ export type Database = {
           credit_decision_id: string | null
           duration_minutes: number
           end_time: string
-          id: string
           health_insurance_id: string | null
+          id: string
           is_batch: boolean
           lead_id: string | null
           location_id: string | null
@@ -488,8 +508,8 @@ export type Database = {
           credit_decision_id?: string | null
           duration_minutes?: number
           end_time: string
-          id?: string
           health_insurance_id?: string | null
+          id?: string
           is_batch?: boolean
           lead_id?: string | null
           location_id?: string | null
@@ -523,8 +543,8 @@ export type Database = {
           credit_decision_id?: string | null
           duration_minutes?: number
           end_time?: string
-          id?: string
           health_insurance_id?: string | null
+          id?: string
           is_batch?: boolean
           lead_id?: string | null
           location_id?: string | null
@@ -554,6 +574,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contracts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_health_insurance_clinic_fkey"
+            columns: ["health_insurance_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "health_insurances"
+            referencedColumns: ["id", "clinic_id"]
           },
           {
             foreignKeyName: "appointments_lead_id_fkey"
@@ -2313,6 +2340,8 @@ export type Database = {
           location_id: string | null
           professional_id: string
           start_time: string
+          valid_from: string | null
+          valid_until: string | null
         }
         Insert: {
           clinic_id: string
@@ -2324,6 +2353,8 @@ export type Database = {
           location_id?: string | null
           professional_id: string
           start_time: string
+          valid_from?: string | null
+          valid_until?: string | null
         }
         Update: {
           clinic_id?: string
@@ -2335,6 +2366,8 @@ export type Database = {
           location_id?: string | null
           professional_id?: string
           start_time?: string
+          valid_from?: string | null
+          valid_until?: string | null
         }
         Relationships: [
           {
@@ -2493,8 +2526,8 @@ export type Database = {
           id: string
           maximum_booking_days: number
           minimum_booking_notice_hours: number
-          professional_id: string
           private_appointment_duration_minutes: number
+          professional_id: string
           updated_at: string
         }
         Insert: {
@@ -2510,8 +2543,8 @@ export type Database = {
           id?: string
           maximum_booking_days?: number
           minimum_booking_notice_hours?: number
-          professional_id: string
           private_appointment_duration_minutes?: number
+          professional_id: string
           updated_at?: string
         }
         Update: {
@@ -2527,8 +2560,8 @@ export type Database = {
           id?: string
           maximum_booking_days?: number
           minimum_booking_notice_hours?: number
-          professional_id?: string
           private_appointment_duration_minutes?: number
+          professional_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -4204,6 +4237,18 @@ export type Database = {
       }
     }
     Functions: {
+      assert_appointment_slot: {
+        Args: {
+          p_clinic_id: string
+          p_end_time: string
+          p_ignore_appointment_id?: string
+          p_location_id: string
+          p_professional_id: string
+          p_start_time: string
+          p_treatment_id: string
+        }
+        Returns: undefined
+      }
       auth_clinic_id: { Args: never; Returns: string }
       auth_patient_id: { Args: never; Returns: string }
       auth_user_role: { Args: never; Returns: string }
@@ -4211,6 +4256,242 @@ export type Database = {
         Args: { p_clinic_id: string; p_force?: boolean }
         Returns: Json
       }
+      cancel_appointment_secure:
+        | {
+            Args: {
+              p_appointment_id: string
+              p_reason: string
+              p_status?: Database["public"]["Enums"]["appointment_status"]
+            }
+            Returns: {
+              appointment_type: string
+              batch_id: string | null
+              billing_type: string
+              cancelled_reason: string | null
+              checked_in_at: string | null
+              clinic_id: string
+              completed_at: string | null
+              confirmed_at: string | null
+              contract_id: string | null
+              contract_item_id: string | null
+              created_at: string
+              created_by: string | null
+              credit_check_required: boolean
+              credit_check_status: string
+              credit_decision_id: string | null
+              duration_minutes: number
+              end_time: string
+              health_insurance_id: string | null
+              id: string
+              is_batch: boolean
+              lead_id: string | null
+              location_id: string | null
+              no_show_reason: string | null
+              notes: string | null
+              patient_id: string | null
+              professional_id: string | null
+              rescheduled_from: string | null
+              rescheduled_to: string | null
+              scheduled_at: string | null
+              start_time: string
+              status: Database["public"]["Enums"]["appointment_status"]
+              treatment_id: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "appointments"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_appointment_id: string
+              p_clinic_id: string
+              p_reason: string
+              p_status?: Database["public"]["Enums"]["appointment_status"]
+            }
+            Returns: {
+              appointment_type: string
+              batch_id: string | null
+              billing_type: string
+              cancelled_reason: string | null
+              checked_in_at: string | null
+              clinic_id: string
+              completed_at: string | null
+              confirmed_at: string | null
+              contract_id: string | null
+              contract_item_id: string | null
+              created_at: string
+              created_by: string | null
+              credit_check_required: boolean
+              credit_check_status: string
+              credit_decision_id: string | null
+              duration_minutes: number
+              end_time: string
+              health_insurance_id: string | null
+              id: string
+              is_batch: boolean
+              lead_id: string | null
+              location_id: string | null
+              no_show_reason: string | null
+              notes: string | null
+              patient_id: string | null
+              professional_id: string | null
+              rescheduled_from: string | null
+              rescheduled_to: string | null
+              scheduled_at: string | null
+              start_time: string
+              status: Database["public"]["Enums"]["appointment_status"]
+              treatment_id: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "appointments"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+      confirm_appointment_secure: {
+        Args: { p_appointment_id: string; p_clinic_id: string }
+        Returns: {
+          appointment_type: string
+          batch_id: string | null
+          billing_type: string
+          cancelled_reason: string | null
+          checked_in_at: string | null
+          clinic_id: string
+          completed_at: string | null
+          confirmed_at: string | null
+          contract_id: string | null
+          contract_item_id: string | null
+          created_at: string
+          created_by: string | null
+          credit_check_required: boolean
+          credit_check_status: string
+          credit_decision_id: string | null
+          duration_minutes: number
+          end_time: string
+          health_insurance_id: string | null
+          id: string
+          is_batch: boolean
+          lead_id: string | null
+          location_id: string | null
+          no_show_reason: string | null
+          notes: string | null
+          patient_id: string | null
+          professional_id: string | null
+          rescheduled_from: string | null
+          rescheduled_to: string | null
+          scheduled_at: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          treatment_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_appointment_secure: {
+        Args: {
+          p_appointment_type?: string
+          p_billing_type?: string
+          p_clinic_id: string
+          p_contract_id?: string
+          p_contract_item_id?: string
+          p_duration_minutes?: number
+          p_health_insurance_id?: string
+          p_lead_id: string
+          p_location_id: string
+          p_notes?: string
+          p_patient_id: string
+          p_professional_id: string
+          p_start_time: string
+          p_treatment_id: string
+        }
+        Returns: {
+          appointment_type: string
+          batch_id: string | null
+          billing_type: string
+          cancelled_reason: string | null
+          checked_in_at: string | null
+          clinic_id: string
+          completed_at: string | null
+          confirmed_at: string | null
+          contract_id: string | null
+          contract_item_id: string | null
+          created_at: string
+          created_by: string | null
+          credit_check_required: boolean
+          credit_check_status: string
+          credit_decision_id: string | null
+          duration_minutes: number
+          end_time: string
+          health_insurance_id: string | null
+          id: string
+          is_batch: boolean
+          lead_id: string | null
+          location_id: string | null
+          no_show_reason: string | null
+          notes: string | null
+          patient_id: string | null
+          professional_id: string | null
+          rescheduled_from: string | null
+          rescheduled_to: string | null
+          scheduled_at: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          treatment_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_available_slots:
+        | {
+            Args: {
+              p_clinic_id: string
+              p_date_from: string
+              p_date_to: string
+              p_location_id: string
+              p_professional_id: string
+              p_step_minutes?: number
+              p_treatment_id: string
+            }
+            Returns: {
+              duration_minutes: number
+              end_time: string
+              start_time: string
+            }[]
+          }
+        | {
+            Args: {
+              p_billing_type: string
+              p_clinic_id: string
+              p_date_from: string
+              p_date_to: string
+              p_health_insurance_id: string
+              p_location_id: string
+              p_professional_id: string
+              p_step_minutes: number
+              p_treatment_id: string
+            }
+            Returns: {
+              duration_minutes: number
+              end_time: string
+              start_time: string
+            }[]
+          }
       get_finance_contract_forecast_detail: {
         Args: { p_contract_id: string }
         Returns: Json
@@ -4404,7 +4685,175 @@ export type Database = {
       }
       normalize_payment_method: { Args: { _value: string }; Returns: string }
       parse_brl_amount: { Args: { _value: string }; Returns: number }
+      reassign_appointment_professional_secure: {
+        Args: {
+          p_appointment_id: string
+          p_clinic_id: string
+          p_professional_id: string
+        }
+        Returns: {
+          appointment_type: string
+          batch_id: string | null
+          billing_type: string
+          cancelled_reason: string | null
+          checked_in_at: string | null
+          clinic_id: string
+          completed_at: string | null
+          confirmed_at: string | null
+          contract_id: string | null
+          contract_item_id: string | null
+          created_at: string
+          created_by: string | null
+          credit_check_required: boolean
+          credit_check_status: string
+          credit_decision_id: string | null
+          duration_minutes: number
+          end_time: string
+          health_insurance_id: string | null
+          id: string
+          is_batch: boolean
+          lead_id: string | null
+          location_id: string | null
+          no_show_reason: string | null
+          notes: string | null
+          patient_id: string | null
+          professional_id: string | null
+          rescheduled_from: string | null
+          rescheduled_to: string | null
+          scheduled_at: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          treatment_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       renewal_tasks_daily_maintenance: { Args: never; Returns: undefined }
+      reschedule_appointment_secure: {
+        Args: {
+          p_appointment_id: string
+          p_clinic_id: string
+          p_duration_minutes?: number
+          p_location_id?: string
+          p_notes?: string
+          p_professional_id?: string
+          p_reason?: string
+          p_start_time: string
+        }
+        Returns: {
+          appointment_type: string
+          batch_id: string | null
+          billing_type: string
+          cancelled_reason: string | null
+          checked_in_at: string | null
+          clinic_id: string
+          completed_at: string | null
+          confirmed_at: string | null
+          contract_id: string | null
+          contract_item_id: string | null
+          created_at: string
+          created_by: string | null
+          credit_check_required: boolean
+          credit_check_status: string
+          credit_decision_id: string | null
+          duration_minutes: number
+          end_time: string
+          health_insurance_id: string | null
+          id: string
+          is_batch: boolean
+          lead_id: string | null
+          location_id: string | null
+          no_show_reason: string | null
+          notes: string | null
+          patient_id: string | null
+          professional_id: string | null
+          rescheduled_from: string | null
+          rescheduled_to: string | null
+          scheduled_at: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          treatment_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_appointment_duration:
+        | {
+            Args: {
+              p_clinic_id: string
+              p_professional_id: string
+              p_treatment_id?: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_billing_type: string
+              p_clinic_id: string
+              p_health_insurance_id: string
+              p_professional_id: string
+              p_treatment_id: string
+            }
+            Returns: number
+          }
+      transition_appointment_status_secure: {
+        Args: {
+          p_appointment_id: string
+          p_clinic_id: string
+          p_status: Database["public"]["Enums"]["appointment_status"]
+        }
+        Returns: {
+          appointment_type: string
+          batch_id: string | null
+          billing_type: string
+          cancelled_reason: string | null
+          checked_in_at: string | null
+          clinic_id: string
+          completed_at: string | null
+          confirmed_at: string | null
+          contract_id: string | null
+          contract_item_id: string | null
+          created_at: string
+          created_by: string | null
+          credit_check_required: boolean
+          credit_check_status: string
+          credit_decision_id: string | null
+          duration_minutes: number
+          end_time: string
+          health_insurance_id: string | null
+          id: string
+          is_batch: boolean
+          lead_id: string | null
+          location_id: string | null
+          no_show_reason: string | null
+          notes: string | null
+          patient_id: string | null
+          professional_id: string | null
+          rescheduled_from: string | null
+          rescheduled_to: string | null
+          scheduled_at: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["appointment_status"]
+          treatment_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       upsert_contract_financial_forecast: {
         Args: { p_contract_id: string; p_force?: boolean }
         Returns: Json
@@ -4575,6 +5024,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "receptionist", "professional", "patient", "sales"],

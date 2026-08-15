@@ -233,7 +233,6 @@ export default function AppointmentsPage() {
   const [rescheduleProfessional, setRescheduleProfessional] = useState('unassigned');
   const [rescheduleNotes, setRescheduleNotes] = useState('');
   const [reassignProfessional, setReassignProfessional] = useState('unassigned');
-  const [proposalLoadingId, setProposalLoadingId] = useState<string | null>(null);
   const [waitlistTargetType, setWaitlistTargetType] = useState<WaitlistTargetType>('lead');
   const [waitlistLeadId, setWaitlistLeadId] = useState('');
   const [waitlistPatientId, setWaitlistPatientId] = useState('');
@@ -808,18 +807,21 @@ export default function AppointmentsPage() {
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const appointment = appointments.find((item) => item.id === id);
-      const patch: Record<string, unknown> = { status };
-
-      if (status === 'confirmed') patch.confirmed_at = new Date().toISOString();
-      if (status === 'in_progress') patch.checked_in_at = new Date().toISOString();
-      if (status === 'completed') patch.completed_at = new Date().toISOString();
-
-      const { error } = await supabase.from('appointments').update(patch).eq('id', id);
+      const { error } = status === 'confirmed'
+        ? await callAgendaRpc<AppointmentRow>('confirm_appointment_secure', {
+            p_clinic_id: clinicId!,
+            p_appointment_id: id,
+          })
+        : await callAgendaRpc<AppointmentRow>('transition_appointment_status_secure', {
+            p_clinic_id: clinicId!,
+            p_appointment_id: id,
+            p_status: status,
+          });
       if (error) throw error;
 
       if (appointment?.lead_id && status === 'completed') {
         const { error: leadError } = await supabase.from('leads')
-          .update({ kanban_stage: 'proposal_sent' })
+          .update({ kanban_stage: 'closed_won' })
           .eq('clinic_id', clinicId!)
           .eq('id', appointment.lead_id);
         if (leadError) throw leadError;
@@ -846,6 +848,7 @@ export default function AppointmentsPage() {
         }
 
         const { error } = await callAgendaRpc<AppointmentRow>('cancel_appointment_secure', {
+          p_clinic_id: clinicId,
           p_appointment_id: appointment.id,
           p_reason: exceptionReason.trim(),
           p_status: exceptionModal.mode === 'cancel' ? 'cancelled' : 'no_show',
@@ -872,37 +875,16 @@ export default function AppointmentsPage() {
       const effectiveProfessionalId = nextProfessionalId || appointment.professional_id;
       if (!effectiveProfessionalId) throw new Error('Selecione um profissional para remarcar.');
 
-      let durationMinutes = 60;
-      if (appointment.billing_type === 'insurance' && appointment.health_insurance_id) {
-        const { data: insuranceRule, error: insuranceRuleError } = await supabase
-          .from('professional_health_insurances')
-          .select('appointment_duration_minutes')
-          .eq('clinic_id', clinicId)
-          .eq('professional_id', effectiveProfessionalId)
-          .eq('health_insurance_id', appointment.health_insurance_id)
-          .eq('status', 'active')
-          .maybeSingle();
-        if (insuranceRuleError) throw insuranceRuleError;
-        if (!insuranceRule) throw new Error('O convênio não está ativo para o profissional selecionado.');
-        durationMinutes = insuranceRule.appointment_duration_minutes;
-      } else {
-        const { data: privateRule, error: privateRuleError } = await supabase
-          .from('professional_settings')
-          .select('private_appointment_duration_minutes')
-          .eq('clinic_id', clinicId)
-          .eq('professional_id', effectiveProfessionalId)
-          .maybeSingle();
-        if (privateRuleError) throw privateRuleError;
-        durationMinutes = privateRule?.private_appointment_duration_minutes || 60;
-      }
       const mergedNotes = [appointment.notes, rescheduleNotes].filter(Boolean).join('\n\n');
       const { data: newAppointment, error: createError } = await callAgendaRpc<{ id: string }>('reschedule_appointment_secure', {
+        p_clinic_id: clinicId,
         p_appointment_id: appointment.id,
         p_start_time: startTime.toISOString(),
         p_professional_id: nextProfessionalId,
         p_location_id: appointment.location_id || selectedLocationId,
         p_notes: mergedNotes || null,
-        p_duration_minutes: durationMinutes,
+        // O PostgreSQL recalcula pela modalidade, convênio, serviço e profissional vigentes.
+        p_duration_minutes: null,
         p_reason: exceptionReason.trim() || 'Remarcado',
       });
       if (createError) throw createError;
@@ -934,6 +916,7 @@ export default function AppointmentsPage() {
 
       if (!nextProfessionalId) throw new Error('Selecione um profissional para o agendamento.');
       const { error } = await callAgendaRpc<AppointmentRow>('reassign_appointment_professional_secure', {
+        p_clinic_id: clinicId,
         p_appointment_id: viewAppt.id,
         p_professional_id: nextProfessionalId,
       });
@@ -1144,7 +1127,8 @@ export default function AppointmentsPage() {
         p_start_time: startTime,
         p_appointment_type: waitlist.lead_id ? 'evaluation' : 'consultation',
         p_notes: waitlist.notes || null,
-        p_duration_minutes: waitlist.min_duration_minutes,
+        // A duração ofertada e criada tem a mesma autoridade canônica no PostgreSQL.
+        p_duration_minutes: null,
         p_contract_id: null,
         p_contract_item_id: null,
       });
@@ -1273,82 +1257,6 @@ export default function AppointmentsPage() {
     setWaitlistContactPreference('whatsapp');
     setWaitlistContactPhone('');
     setWaitlistNotes('');
-  };
-
-  const ensurePatientForLead = async (leadId: string) => {
-    const { data: lead, error: leadError } = await supabase.from('leads')
-      .select('*')
-      .eq('clinic_id', clinicId!)
-      .eq('id', leadId)
-      .single();
-    if (leadError) throw leadError;
-
-    if (lead.patient_id) return lead.patient_id as string;
-
-    const { data: patient, error: patientError } = await supabase
-      .from('patients')
-      .insert({
-        clinic_id: clinicId!,
-        full_name: lead.full_name,
-        phone: lead.phone,
-        cpf: lead.cpf,
-        email: lead.email,
-        date_of_birth: lead.birth_date,
-        notes: lead.notes,
-        status: 'active',
-      })
-      .select('id')
-      .single();
-    if (patientError) throw patientError;
-
-    const { error: updateLeadError } = await supabase.from('leads')
-      .update({
-        patient_id: patient.id,
-        converted_at: new Date().toISOString(),
-      })
-      .eq('clinic_id', clinicId!)
-      .eq('id', leadId);
-    if (updateLeadError) throw updateLeadError;
-
-    qc.invalidateQueries({ queryKey: ['crm-leads'] });
-    qc.invalidateQueries({ queryKey: ['patients'] });
-    qc.invalidateQueries({ queryKey: ['patients-select'] });
-
-    return patient.id as string;
-  };
-
-  const openProposalFromEvaluation = async (appointment: AppointmentRow, finalizeFirst = false) => {
-    if (!clinicId || !appointment?.lead_id) return;
-
-    setProposalLoadingId(appointment.id);
-    try {
-      if (finalizeFirst) {
-        const { error: appointmentError } = await supabase.from('appointments')
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.id);
-        if (appointmentError) throw appointmentError;
-
-        const { error: leadError } = await supabase.from('leads')
-          .update({ kanban_stage: 'proposal_sent' })
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.lead_id);
-        if (leadError) throw leadError;
-      }
-
-      const patientId = await ensurePatientForLead(appointment.lead_id);
-      qc.invalidateQueries({ queryKey: ['appointments'] });
-      qc.invalidateQueries({ queryKey: ['crm-leads'] });
-      setViewAppt(null);
-      navigate(`/clinic/proposals?patientId=${patientId}&leadId=${appointment.lead_id}&openNew=1`);
-    } catch (err) {
-      toast({ title: 'Erro', description: err.message || 'Não foi possível abrir a proposta.', variant: 'destructive' });
-    } finally {
-      setProposalLoadingId(null);
-    }
   };
 
   const navigate_ = (dir: number) => {
@@ -2075,16 +1983,6 @@ export default function AppointmentsPage() {
                   {viewAppt.status === 'in_progress' && (
                     <BrandButton size="sm" onClick={() => updateStatusMutation.mutate({ id: viewAppt.id, status: 'completed' })}>
                       <Check className="w-4 h-4" /> Concluir atendimento
-                    </BrandButton>
-                  )}
-                  {viewAppt.appointment_type === 'evaluation' && viewAppt.status === 'in_progress' && (
-                    <BrandButton size="sm" onClick={() => openProposalFromEvaluation(viewAppt, true)} disabled={proposalLoadingId === viewAppt.id}>
-                      <CalendarCheck2 className="w-4 h-4" /> {proposalLoadingId === viewAppt.id ? 'Abrindo...' : 'Finalizar e abrir proposta'}
-                    </BrandButton>
-                  )}
-                  {viewAppt.appointment_type === 'evaluation' && viewAppt.status === 'completed' && (
-                    <BrandButton size="sm" variant="outline" onClick={() => openProposalFromEvaluation(viewAppt, false)} disabled={proposalLoadingId === viewAppt.id}>
-                      <CalendarCheck2 className="w-4 h-4" /> {proposalLoadingId === viewAppt.id ? 'Abrindo...' : 'Abrir proposta'}
                     </BrandButton>
                   )}
                   {canAdjustAppointment && (

@@ -14,12 +14,12 @@ A constraint `appointments_no_professional_overlap` impede sobreposição dos st
 
 ## Duração efetiva
 
-Ordem de resolução:
+Desde a Fase 5.5B.1, `resolve_appointment_duration` é a autoridade única por modalidade:
 
-1. `professional_treatments.duration_minutes`.
-2. `treatments.duration_minutes`.
-3. `professional_settings.default_appointment_duration_minutes`.
-4. Fallback técnico de 30 minutos.
+- particular: duração particular do profissional; depois serviço do profissional, tratamento, duração padrão e fallback de 30 minutos;
+- convênio: exige vínculo profissional × convênio ativo e usa sua duração; os fallbacks técnicos permanecem dentro da mesma função.
+
+Slots, criação, reagendamento e reatribuição reutilizam essa função. Nenhuma dessas operações calcula duração no frontend.
 
 O grid padrão de busca avança em intervalos de 15 minutos. A duração do atendimento não precisa ser múltipla de 15.
 
@@ -34,9 +34,11 @@ Os eventos são persistidos em `timestamptz`. A disponibilidade semanal (`time`)
 - `reschedule_appointment_secure`: remarcação atômica com rollback integral.
 - `cancel_appointment_secure`: cancelamento/falta e liberação do slot.
 - `reassign_appointment_professional_secure`: reatribuição protegida.
+- `confirm_appointment_secure`: confirmação tenant-aware.
+- `transition_appointment_status_secure`: transições controladas `confirmed → in_progress → completed`.
 - `resolve_appointment_duration`: duração efetiva.
 
-As funções usam `SECURITY INVOKER`, RLS e checagem explícita de vínculo com a clínica. `anon` e `PUBLIC` não recebem execução. `service_role` é aceito para automações internas, como WhatsApp.
+As RPCs fortalecidas de lifecycle recebem `clinic_id` explicitamente, usam `SECURITY INVOKER`, RLS e checagem de vínculo com a clínica. `anon` e `PUBLIC` não recebem execução. `service_role` é aceito para automações internas, como WhatsApp.
 
 ## Códigos funcionais de erro
 
@@ -47,10 +49,13 @@ As funções usam `SECURITY INVOKER`, RLS e checagem explícita de vínculo com 
 - `AGENDA_PROFESSIONAL_NOT_AT_LOCATION`
 - `AGENDA_LOCATION_INVALID`
 - `AGENDA_FORBIDDEN`
+- `AGENDA_INSURANCE_REQUIRED`
+- `AGENDA_INVALID_PROFESSIONAL_INSURANCE`
+- `AGENDA_DURATION_MISMATCH`
+- `AGENDA_INVALID_STATUS_TRANSITION`
 
 Esses códigos são estáveis para frontend, WhatsApp e futuras ferramentas de IA.
 
 ## Escopo futuro
 
 O código antigo da lista de espera ainda pode calcular sugestões, porém a confirmação da vaga já passa pela RPC transacional. Em uma fase futura, o cálculo de sugestões deve consumir diretamente `get_available_slots`. Isso não altera o escopo dos módulos MVP desativados.
-

@@ -1,6 +1,24 @@
 -- Run with `supabase test db` against a disposable/local database.
 -- Every fixture is rolled back.
 BEGIN;
+
+DO $$
+BEGIN
+  IF NOT has_table_privilege('authenticated', 'public.appointments', 'SELECT,INSERT,UPDATE')
+     OR NOT has_table_privilege('service_role', 'public.appointments', 'SELECT,INSERT,UPDATE')
+     OR NOT has_table_privilege('authenticated', 'public.professional_availability', 'SELECT')
+     OR NOT has_table_privilege('service_role', 'public.professional_availability', 'SELECT') THEN
+    RAISE EXCEPTION 'TEST_FAILED: SECURITY INVOKER scheduling table grants are missing';
+  END IF;
+END
+$$;
+
+-- The local migration history does not grant DML on every legacy public table
+-- to service_role. The fixtures exercise SECURITY INVOKER RPCs as service_role,
+-- so grant access only inside this transaction; ROLLBACK removes these grants.
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
 SET LOCAL ROLE service_role;
 
 DO $$
@@ -17,7 +35,9 @@ BEGIN
   INSERT INTO public.clinic_locations(clinic_id,name,timezone) VALUES(c1,'Unit 2','America/Sao_Paulo') RETURNING id INTO l2;
   INSERT INTO public.professionals(id,clinic_id,user_id,full_name,status)
     VALUES(p1,c1,NULL,'Professional without login','active');
-  INSERT INTO public.professional_locations(clinic_id,professional_id,location_id) VALUES(c1,p1,l2);
+  INSERT INTO public.professional_locations(clinic_id,professional_id,location_id) VALUES
+    (c1,p1,l1),
+    (c1,p1,l2);
   INSERT INTO public.treatments(id,clinic_id,name,duration_minutes) VALUES(t1,c1,'Phase 5 treatment',60);
   INSERT INTO public.professional_treatments(clinic_id,professional_id,treatment_id,duration_minutes,status)
     VALUES(c1,p1,t1,45,'active');
@@ -26,8 +46,8 @@ BEGIN
     (c1,l1,p1,EXTRACT(DOW FROM DATE '2099-01-05')::integer,'08:00','18:00'),
     (c1,l2,p1,EXTRACT(DOW FROM DATE '2099-01-05')::integer,'08:00','18:00');
 
-  IF public.resolve_appointment_duration(c1,p1,t1) <> 45 THEN
-    RAISE EXCEPTION 'TEST_FAILED: professional treatment duration precedence';
+  IF public.resolve_appointment_duration(c1,p1,t1) <> 60 THEN
+    RAISE EXCEPTION 'TEST_FAILED: canonical private duration precedence';
   END IF;
   SELECT count(*) INTO slots FROM public.get_available_slots(c1,l1,p1,t1,'2099-01-05','2099-01-05',15);
   IF slots = 0 THEN RAISE EXCEPTION 'TEST_FAILED: weekly availability'; END IF;
@@ -48,11 +68,11 @@ BEGIN
   EXCEPTION WHEN exclusion_violation THEN NULL;
   END;
 
-  a1 := public.cancel_appointment_secure(a1.id,'test cancellation','cancelled');
+  a1 := public.cancel_appointment_secure(c1,a1.id,'test cancellation','cancelled');
   a2 := public.create_appointment_secure(c1,l1,p1,NULL,NULL,t1,'2099-01-05 12:00+00','session',NULL,NULL,NULL,NULL);
   IF a2.id IS NULL THEN RAISE EXCEPTION 'TEST_FAILED: cancellation did not free slot'; END IF;
 
-  a1 := public.reschedule_appointment_secure(a2.id,'2099-01-05 15:00+00',p1,l1,NULL,NULL,'test reschedule');
+  a1 := public.reschedule_appointment_secure(c1,a2.id,'2099-01-05 15:00+00',p1,l1,NULL,NULL,'test reschedule');
   IF NOT EXISTS(SELECT 1 FROM public.appointments WHERE id=a2.id AND status='rescheduled' AND rescheduled_to=a1.id) THEN
     RAISE EXCEPTION 'TEST_FAILED: safe reschedule chain';
   END IF;
