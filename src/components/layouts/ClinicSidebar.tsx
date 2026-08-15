@@ -22,11 +22,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/clinic', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'dashboard.view' },
+  { to: '/clinic/appointments', icon: CalendarDays, label: 'Agenda', roles: ['admin', 'receptionist', 'professional'], permissionKey: 'appointments.view' },
   { to: '/clinic/crm', icon: KanbanSquare, label: 'CRM', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'crm.view' },
   { to: '/clinic/whatsapp-ai', icon: MessageSquare, label: 'WhatsApp IA', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'whatsapp_ai.view' },
   { to: '/clinic/patients', icon: Users, label: 'Pacientes', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'patients.view' },
   { to: '/clinic/treatments', icon: Stethoscope, label: 'Tratamentos', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'treatments.view' },
-  { to: '/clinic/appointments', icon: CalendarDays, label: 'Agenda', roles: ['admin', 'receptionist', 'professional'], permissionKey: 'appointments.view' },
   { to: '/clinic/reports', icon: MessageSquare, label: 'Relatórios', roles: ['admin', 'sales'], permissionKey: 'reports.view' },
   { to: '/clinic/settings', icon: Settings, label: 'Configurações', roles: ['admin'], permissionKey: 'settings.view' },
 ];
