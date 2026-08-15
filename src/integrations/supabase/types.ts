@@ -167,6 +167,87 @@ export type Database = {
           },
         ]
       }
+      ai_usage_events: {
+        Row: {
+          channel: string
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at: string
+          error_code: string | null
+          id: string
+          input_units: number | null
+          message_type: string
+          model: string | null
+          occurred_at: string
+          outcome: string
+          output_units: number | null
+          preprocessing_latency_ms: number | null
+          provider: string
+          provider_latency_ms: number | null
+          request_type: string
+          total_latency_ms: number
+          total_units: number | null
+        }
+        Insert: {
+          channel: string
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          input_units?: number | null
+          message_type: string
+          model?: string | null
+          occurred_at?: string
+          outcome: string
+          output_units?: number | null
+          preprocessing_latency_ms?: number | null
+          provider: string
+          provider_latency_ms?: number | null
+          request_type: string
+          total_latency_ms: number
+          total_units?: number | null
+        }
+        Update: {
+          channel?: string
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          input_units?: number | null
+          message_type?: string
+          model?: string | null
+          occurred_at?: string
+          outcome?: string
+          output_units?: number | null
+          preprocessing_latency_ms?: number | null
+          provider?: string
+          provider_latency_ms?: number | null
+          request_type?: string
+          total_latency_ms?: number
+          total_units?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_events_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
       appointment_blocks: {
         Row: {
           clinic_id: string
@@ -4546,6 +4627,7 @@ export type Database = {
       }
       whatsapp_ai_settings: {
         Row: {
+          ai_engine_mode: string
           clinic_id: string
           created_at: string
           default_goal: string
@@ -4558,11 +4640,14 @@ export type Database = {
           openai_key_configured: boolean
           openai_model: string
           phone_number_id_last4: string | null
+          preferred_language: string
+          response_style: string
           updated_at: string
           webhook_verify_token_configured: boolean
           welcome_message: string | null
         }
         Insert: {
+          ai_engine_mode?: string
           clinic_id: string
           created_at?: string
           default_goal?: string
@@ -4575,11 +4660,14 @@ export type Database = {
           openai_key_configured?: boolean
           openai_model?: string
           phone_number_id_last4?: string | null
+          preferred_language?: string
+          response_style?: string
           updated_at?: string
           webhook_verify_token_configured?: boolean
           welcome_message?: string | null
         }
         Update: {
+          ai_engine_mode?: string
           clinic_id?: string
           created_at?: string
           default_goal?: string
@@ -4592,6 +4680,8 @@ export type Database = {
           openai_key_configured?: boolean
           openai_model?: string
           phone_number_id_last4?: string | null
+          preferred_language?: string
+          response_style?: string
           updated_at?: string
           webhook_verify_token_configured?: boolean
           welcome_message?: string | null

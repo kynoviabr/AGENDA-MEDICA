@@ -72,6 +72,8 @@ WHATSAPP_WEBHOOK_TOKEN=
 WHATSAPP_TOKEN_ENCRYPTION_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.6-luna
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_VISION_MODEL=gpt-5.6-luna
 ```
 
 `WHATSAPP_TOKEN_ENCRYPTION_KEY` deve ser uma chave aleatória forte com pelo menos 32 caracteres. Não use chaves da Meta ou do Supabase como chave de criptografia. O callback único da plataforma é:
@@ -81,6 +83,8 @@ https://<project-ref>.supabase.co/functions/v1/whatsapp-ai-agent
 ```
 
 Não configure `WHATSAPP_AI_DEFAULT_CLINIC_ID`, `WHATSAPP_ACCESS_TOKEN` ou `WHATSAPP_PHONE_NUMBER_ID`: essas variáveis pertenciam ao protótipo de uma única clínica e foram substituídas pelo roteamento multi-clínica.
+
+O novo Aura AI Engine é ativado gradualmente por `whatsapp_ai_settings.ai_engine_mode`. O default é `legacy`; `shadow` executa a nova engine sem enviar sua resposta e `active` envia somente a resposta Aura. Nenhuma clínica deve ser movida para `active` antes de homologação multimodal e operacional.
 
 ## Módulos MVP desativados
 
