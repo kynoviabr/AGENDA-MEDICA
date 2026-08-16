@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare, HeartHandshake, MapPin } from 'lucide-react';
+import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare, HeartHandshake } from 'lucide-react';
 import CategoriesTab from '@/components/settings/CategoriesTab';
 import ProfessionalsTab from '@/components/settings/ProfessionalsTab';
 import RolesTab from '@/components/settings/RolesTab';
@@ -44,7 +44,6 @@ export default function SettingsPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
 
   // Colors
@@ -109,7 +108,7 @@ export default function SettingsPage() {
       .then(({ data }) => {
         if (data) {
           setName(data.name); setPhone(data.phone || ''); setEmail(data.email || '');
-          setAddress(data.address || ''); setWhatsapp(data.support_whatsapp || '');
+          setWhatsapp(data.support_whatsapp || '');
           setPrimaryColor(data.primary_color || '#1a7a6d');
           setSecondaryColor(data.secondary_color || '#f5f0e8');
           setAccentColor(data.accent_color || '#c8912e');
@@ -161,7 +160,7 @@ export default function SettingsPage() {
     if (!clinicId || role !== 'admin') return;
     setSaving(true);
     const { error } = await supabase.from('clinics').update({
-      name, phone, email, address, support_whatsapp: whatsapp,
+      name, phone, email, support_whatsapp: whatsapp,
       primary_color: primaryColor, secondary_color: secondaryColor, accent_color: accentColor,
     }).eq('id', clinicId);
     setSaving(false);
@@ -226,7 +225,6 @@ export default function SettingsPage() {
           <TabsTrigger value="categories"><Tags className="w-4 h-4 mr-1" />Categorias</TabsTrigger>
           <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
-          <TabsTrigger value="locations"><MapPin className="w-4 h-4 mr-1" />Unidades</TabsTrigger>
           <TabsTrigger value="professional-rules"><Settings className="w-4 h-4 mr-1" />Regras</TabsTrigger>
           <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
           <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Tratamentos</TabsTrigger>
@@ -235,22 +233,37 @@ export default function SettingsPage() {
         </TabsList>
 
         {/* ===== GENERAL ===== */}
-        <TabsContent value="general">
+        <TabsContent value="general" className="space-y-5">
           <Card className="shadow-card">
             <CardHeader><CardTitle>Dados da Clínica</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Nome</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Telefone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
-                <div className="space-y-2"><Label>E-mail</Label><Input value={email} onChange={e => setEmail(e.target.value)} /></div>
-                <div className="space-y-2"><Label>WhatsApp Suporte</Label><Input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} /></div>
+            <CardContent>
+              <div className="max-w-xl space-y-2">
+                <Label htmlFor="clinic-name">Nome da clínica</Label>
+                <Input id="clinic-name" value={name} onChange={e => setName(e.target.value)} disabled={role !== 'admin'} />
               </div>
-              <div className="space-y-2"><Label>Endereço</Label><Input value={address} onChange={e => setAddress(e.target.value)} /></div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Contato Administrativo</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Estes contatos são usados para assuntos administrativos, suporte e relacionamento com a clínica. O WhatsApp utilizado no atendimento de pacientes é configurado em WhatsApp IA.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="space-y-2"><Label htmlFor="administrative-email">E-mail administrativo</Label><Input id="administrative-email" type="email" value={email} onChange={e => setEmail(e.target.value)} disabled={role !== 'admin'} /></div>
+                <div className="space-y-2"><Label htmlFor="administrative-whatsapp">WhatsApp administrativo</Label><Input id="administrative-whatsapp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} disabled={role !== 'admin'} /><p className="text-xs text-muted-foreground">Não é o número usado pela Aura para atender pacientes.</p></div>
+                <div className="space-y-2"><Label htmlFor="administrative-phone">Telefone administrativo</Label><Input id="administrative-phone" value={phone} onChange={e => setPhone(e.target.value)} disabled={role !== 'admin'} /></div>
+              </div>
               <Button onClick={saveClinic} disabled={saving || role !== 'admin'} className="gradient-primary text-primary-foreground">
-                <Save className="w-4 h-4 mr-2" />{saving ? 'Salvando...' : 'Salvar'}
+                <Save className="w-4 h-4 mr-2" />{saving ? 'Salvando...' : 'Salvar dados gerais'}
               </Button>
             </CardContent>
           </Card>
+
+          <LocationsTab />
         </TabsContent>
 
         {/* ===== BRANDING ===== */}
@@ -514,7 +527,6 @@ export default function SettingsPage() {
           <ProfessionalsTab />
         </TabsContent>
 
-        <TabsContent value="locations"><LocationsTab /></TabsContent>
         <TabsContent value="professional-rules"><ProfessionalRulesTab /></TabsContent>
 
         <TabsContent value="healthcare">
