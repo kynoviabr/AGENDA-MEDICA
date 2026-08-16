@@ -518,6 +518,25 @@ const PRODUCTION_READINESS_SCENARIOS: AiEvaluationScenario[] = [
   ], ['critical', 'production', 'secret']),
 ];
 
+const OPERATING_HOURS_SCENARIOS: AiEvaluationScenario[] = [
+  scenario('operating-hours-sunday-closed', 'tool_selection', 'high', 'Domingo fechado é interrompido pela regra estruturada antes de consultar o provider', [
+    turn('t1', 'tem horário domingo?', { intent: 'scheduling_request', responseDraft: 'A clínica não atende aos domingos. Quer que eu verifique outro dia?', factualClaims: ['location_closed'], supportedClaims: ['location_closed'], toolResult: { restrictionReason: 'location_closed' } }, [
+      { type: 'tool_called', toolName: 'get_available_slots' }, noInvention,
+    ]),
+  ], ['operating-hours', 'closed-day']),
+  scenario('operating-hours-professional-off', 'tool_selection', 'high', 'Dia sem expediente profissional não consulta slots', [
+    turn('t1', 'a dra ana atende segunda?', { intent: 'professional_question', responseDraft: 'A Dra. Ana não atende às segundas-feiras.', factualClaims: ['professional_not_working'], supportedClaims: ['professional_not_working'], toolResult: { restrictionReason: 'professional_not_working' } }, [
+      { type: 'tool_not_called', toolName: 'get_available_slots' }, noInvention,
+    ]),
+  ], ['operating-hours', 'professional']),
+  scenario('operating-hours-structured-wins', 'grounding', 'critical', 'Horário estruturado prevalece sobre FAQ conflitante', [
+    turn('t1', 'abre domingo?', { intent: 'administrative_question', responseDraft: 'A unidade não abre aos domingos.', factualClaims: ['sunday_closed'], supportedClaims: ['sunday_closed'], toolResult: knowledgeResult('Domingo: fechado.', 'clinic_locations') }, [noInvention]),
+  ], ['operating-hours', 'structured-first', 'critical']),
+  scenario('operating-hours-special-holiday', 'tool_selection', 'high', 'Feriado com horário especial usa a exceção verificada', [
+    turn('t1', 'qual horário no feriado?', { intent: 'administrative_question', responseDraft: 'No feriado, a unidade atende das 08:00 às 12:00.', factualClaims: ['special_hours'], supportedClaims: ['special_hours'], toolResult: knowledgeResult('Horário especial: 08:00–12:00.', 'clinic_locations') }, [noInvention]),
+  ], ['operating-hours', 'exception']),
+];
+
 export const AI_EVALUATION_DATASET_V1: readonly AiEvaluationScenario[] = [
   ...INTENT_SCENARIOS,
   ...TEMPORAL_SCENARIOS,
@@ -534,6 +553,7 @@ export const AI_EVALUATION_DATASET_V1: readonly AiEvaluationScenario[] = [
   ...END_TO_END_PROPERTY_SCENARIOS,
   ...HANDOFF_SCENARIOS,
   ...PRODUCTION_READINESS_SCENARIOS,
+  ...OPERATING_HOURS_SCENARIOS,
 ];
 
 export const AI_EVALUATION_CRITICAL_V1 = AI_EVALUATION_DATASET_V1.filter((item) => item.severity === 'critical');
@@ -543,6 +563,7 @@ const FAST_SAMPLE_IDS = new Set([
   'tool-01-formal', 'tool-06-informal', 'tool-07-formal',
   'knowledge-unknown-parking', 'knowledge-precedence-service', 'audio-text-equivalence',
   'quality-concise', 'quality-one-question',
+  'operating-hours-sunday-closed',
 ]);
 export const AI_EVALUATION_FAST_V1 = AI_EVALUATION_DATASET_V1.filter(
   (item) => item.severity === 'critical' || FAST_SAMPLE_IDS.has(item.id),

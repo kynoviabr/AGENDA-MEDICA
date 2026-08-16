@@ -7,6 +7,7 @@ import type {
   SchedulingSlot,
 } from '../../scheduling/domain/models.ts';
 import type { SchedulingService } from '../../scheduling/services/SchedulingService.ts';
+import { workingHoursPolicy } from '../../scheduling/operatingHours/WorkingHoursPolicy.ts';
 import type { AiPresentedOption } from '../domain/conversation.ts';
 import type {
   AiToolAuditRecorder,
@@ -207,6 +208,26 @@ export class AuraSchedulingToolExecutor {
     if (!rules.allowAiBooking) throw new AiToolError('AI_TOOL_AUTHORIZATION_DENIED', 'This professional does not allow AI booking.');
     const dateFrom = isoDateArg(args, 'dateFrom');
     const dateTo = isoDateArg(args, 'dateTo');
+    if (location.openingHours && isoDatesInclusive(dateFrom, dateTo).every((date) =>
+      !workingHoursPolicy.isLocationOpen(date, location.openingHours),
+    )) {
+      return success(request, {
+        location: sanitizeLocation(location), professional: sanitizeProfessional(professional),
+        service: service ? sanitizeService(service) : undefined,
+        insurance: insurance ? sanitizeInsurance(insurance) : undefined,
+        slots: [], restrictionReason: 'location_closed',
+      });
+    }
+    if (professional.workingHours && isoDatesInclusive(dateFrom, dateTo).every((date) =>
+      !workingHoursPolicy.isProfessionalWorking(date, professional.workingHours || {}),
+    )) {
+      return success(request, {
+        location: sanitizeLocation(location), professional: sanitizeProfessional(professional),
+        service: service ? sanitizeService(service) : undefined,
+        insurance: insurance ? sanitizeInsurance(insurance) : undefined,
+        slots: [], restrictionReason: 'professional_not_working',
+      });
+    }
     const slots = (await this.scheduling.getAvailableSlots(context, {
       locationId: location.id, professionalId: professional.id, serviceId: service?.id,
       insuranceId: insurance?.id, billingType, dateRange: { from: dateFrom, to: dateTo }, timezone: location.timezone,
@@ -393,7 +414,13 @@ function appointmentOptions(items: readonly SchedulingAppointment[]): AiPresente
   return items.map((item) => ({ id: item.id, value: item.id, label: formatDateTime(item.startAt, 'America/Sao_Paulo'), kind: 'generic' }));
 }
 
-function sanitizeLocation(item: SchedulingLocation) { return { name: item.name, timezone: item.timezone }; }
+function sanitizeLocation(item: SchedulingLocation) {
+  return {
+    name: item.name,
+    timezone: item.timezone,
+    openingHours: item.openingHours?.weekdays,
+  };
+}
 function sanitizeProfessional(item: SchedulingProfessional) { return { name: item.fullName, specialty: item.specialty }; }
 function sanitizeService(item: SchedulingServiceItem) {
   return { name: item.name, durationMinutes: item.durationMinutes, price: item.showPrice ? item.privatePrice : undefined };
@@ -414,6 +441,17 @@ function dateInTimezone(value: string, timezone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value));
   const pick = (type: string) => parts.find((item) => item.type === type)?.value || '';
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
+
+function isoDatesInclusive(from: string, to: string): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (cursor <= end && dates.length <= 121) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
 }
 
 function safeErrorMessage(code: string) {

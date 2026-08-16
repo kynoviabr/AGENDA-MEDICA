@@ -103,6 +103,44 @@ describe('5.6C.1 read-only scheduling tools', () => {
     expect(auditEvents).toEqual([expect.objectContaining({ toolName: 'get_available_slots', outcome: 'success' })]);
   });
 
+  it('answers a closed location day without calling provider availability', async () => {
+    const getAvailableSlots = vi.fn(async () => []);
+    const fake = provider({
+      getAvailableSlots,
+      listLocations: vi.fn(async () => [{
+        id: 'location-a', name: 'Unidade Centro', timezone: 'America/Sao_Paulo', active: true, isPrimary: true,
+        openingHours: { schemaVersion: 1, weekdays: { '1': [{ start: '08:00', end: '18:00' }] } },
+      }]),
+      listProfessionals: vi.fn(async () => [{ id: 'professional-a', fullName: 'Dra. Ana', active: true, workingHours: { '1': [{ start: '08:00', end: '18:00' }] } }]),
+    });
+    const value = new AuraSchedulingToolExecutor(new SchedulingService(fake));
+    const result = await value.execute({
+      context, conversationState: createEmptyConversationState(), config,
+      tool: tool('get_available_slots', 'scheduling_request', { professionalName: 'Ana', billingType: 'private', dateFrom: '2026-08-16', dateTo: '2026-08-16' }),
+    });
+    expect(result).toMatchObject({ outcome: 'success', data: { slots: [], restrictionReason: 'location_closed' } });
+    expect(getAvailableSlots).not.toHaveBeenCalled();
+  });
+
+  it('answers a professional non-working day without calling provider availability', async () => {
+    const getAvailableSlots = vi.fn(async () => []);
+    const fake = provider({
+      getAvailableSlots,
+      listLocations: vi.fn(async () => [{
+        id: 'location-a', name: 'Unidade Centro', timezone: 'America/Sao_Paulo', active: true, isPrimary: true,
+        openingHours: { schemaVersion: 1, weekdays: { '1': [{ start: '08:00', end: '18:00' }] } },
+      }]),
+      listProfessionals: vi.fn(async () => [{ id: 'professional-a', fullName: 'Dra. Ana', active: true, workingHours: { '2': [{ start: '08:00', end: '18:00' }] } }]),
+    });
+    const value = new AuraSchedulingToolExecutor(new SchedulingService(fake));
+    const result = await value.execute({
+      context, conversationState: createEmptyConversationState(), config,
+      tool: tool('get_available_slots', 'scheduling_request', { professionalName: 'Ana', billingType: 'private', dateFrom: '2026-08-17', dateTo: '2026-08-17' }),
+    });
+    expect(result).toMatchObject({ outcome: 'success', data: { slots: [], restrictionReason: 'professional_not_working' } });
+    expect(getAvailableSlots).not.toHaveBeenCalled();
+  });
+
   it('does not reveal a private service price when showPrice is false', async () => {
     const { value } = executor();
     const result = await value.execute({ context, conversationState: createEmptyConversationState(), config, tool: tool('list_services', 'price_question') });

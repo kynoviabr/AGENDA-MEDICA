@@ -4,7 +4,7 @@ import { AuraPilotReadinessService, validateFeatureDependencies, type AuraPilotS
 const readySnapshot: AuraPilotSnapshot = {
   appEnvironment: 'staging', globalSwitchConfigured: true, globalAiDisabled: false, databaseAvailable: true, openAiConfigured: true,
   whatsappConfigured: true, hasLocation: true, hasProfessional: true, hasService: true, hasInsurance: true,
-  hasSchedulingRules: true, authorizedStaffCount: 2, publishedKnowledgeCount: 4,
+  hasOperatingHours: true, hasSchedulingRules: true, authorizedStaffCount: 2, publishedKnowledgeCount: 4,
   gates: { clinicEnabled: true, engineMode: 'active', readEnabled: true, readValidated: true, mutationEnabled: false, knowledgeEnabled: true, knowledgeValidated: true, handoffEnabled: true, handoffValidated: true },
 };
 

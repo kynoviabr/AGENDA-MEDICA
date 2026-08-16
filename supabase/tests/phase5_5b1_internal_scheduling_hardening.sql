@@ -51,6 +51,13 @@ BEGIN
   WHERE clinic_id = clinic_a
     AND is_primary;
 
+  UPDATE public.clinic_locations
+  SET opening_hours = jsonb_build_object('schemaVersion', 1, 'weekdays', jsonb_build_object(
+    EXTRACT(DOW FROM DATE '2099-01-05')::integer::text,
+    jsonb_build_array(jsonb_build_object('start', '08:00', 'end', '18:00'))
+  ))
+  WHERE id = location_a;
+
   INSERT INTO public.professionals(id, clinic_id, user_id, full_name, status) VALUES
     (professional_a, clinic_a, NULL, 'Professional A', 'active'),
     (professional_b, clinic_a, NULL, 'Professional B', 'active');

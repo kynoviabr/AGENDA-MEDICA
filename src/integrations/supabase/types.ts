@@ -1489,7 +1489,9 @@ export type Database = {
           clinic_id: string
           created_at: string
           id: string
+          hide_closed_days: boolean
           is_primary: boolean
+          limit_calendar_to_operating_hours: boolean
           name: string
           opening_hours: Json | null
           parking_information: string | null
@@ -1507,7 +1509,9 @@ export type Database = {
           clinic_id: string
           created_at?: string
           id?: string
+          hide_closed_days?: boolean
           is_primary?: boolean
+          limit_calendar_to_operating_hours?: boolean
           name: string
           opening_hours?: Json | null
           parking_information?: string | null
@@ -1525,7 +1529,9 @@ export type Database = {
           clinic_id?: string
           created_at?: string
           id?: string
+          hide_closed_days?: boolean
           is_primary?: boolean
+          limit_calendar_to_operating_hours?: boolean
           name?: string
           opening_hours?: Json | null
           parking_information?: string | null
@@ -4110,6 +4116,66 @@ export type Database = {
             columns: ["location_id", "clinic_id"]
             isOneToOne: false
             referencedRelation: "clinic_locations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      scheduling_exceptions: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          created_by: string | null
+          exception_date: string
+          id: string
+          is_closed: boolean
+          kind: string
+          location_id: string
+          periods: Json | null
+          professional_id: string | null
+          reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          created_by?: string | null
+          exception_date: string
+          id?: string
+          is_closed?: boolean
+          kind?: string
+          location_id: string
+          periods?: Json | null
+          professional_id?: string | null
+          reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          created_by?: string | null
+          exception_date?: string
+          id?: string
+          is_closed?: boolean
+          kind?: string
+          location_id?: string
+          periods?: Json | null
+          professional_id?: string | null
+          reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_exceptions_location_tenant_fk"
+            columns: ["clinic_id", "location_id"]
+            isOneToOne: false
+            referencedRelation: "clinic_locations"
+            referencedColumns: ["clinic_id", "id"]
+          },
+          {
+            foreignKeyName: "scheduling_exceptions_professional_tenant_fk"
+            columns: ["professional_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
             referencedColumns: ["id", "clinic_id"]
           },
         ]

@@ -71,6 +71,29 @@ describe('SchedulingService', () => {
     expect(getAvailableSlots).toHaveBeenCalledWith(clinicContext, input);
   });
 
+  it('does not let an external free/busy provider expand Aura working hours', async () => {
+    const outside = { ...slot, startAt: '2026-08-17T09:00:00.000Z', endAt: '2026-08-17T10:00:00.000Z' };
+    const provider = fakeProvider({
+      type: 'google_calendar',
+      capabilities: createSchedulingProviderCapabilities(['locations', 'professionals', 'readAvailability']),
+      getAvailableSlots: vi.fn(async () => [outside, slot]),
+      listLocations: vi.fn(async () => [{
+        id: 'location-1', name: 'Unidade', timezone: 'America/Sao_Paulo', active: true, isPrimary: true,
+        openingHours: { schemaVersion: 1, weekdays: { '1': [{ start: '08:00', end: '18:00' }] } },
+      }]),
+      listProfessionals: vi.fn(async () => [{
+        id: 'professional-1', fullName: 'Dra. Teste', active: true,
+        workingHours: { '1': [{ start: '08:00', end: '18:00' }] },
+      }]),
+    });
+    const service = new SchedulingService(provider);
+
+    await expect(service.getAvailableSlots(clinicContext, {
+      locationId: 'location-1', professionalId: 'professional-1',
+      dateRange: { from: '2026-08-17', to: '2026-08-17' },
+    })).resolves.toEqual([slot]);
+  });
+
   it('delegates listAppointments and returns provider-neutral appointments', async () => {
     const listAppointments = vi.fn(async () => [appointment]);
     const service = new SchedulingService(fakeProvider({ listAppointments }));

@@ -33,6 +33,8 @@ import type { Database } from '@/integrations/supabase/types';
 import { getAgendaErrorMessage } from '@/lib/agenda/errors';
 import { AgendaStatCard } from '@/components/agenda/AgendaStatCard';
 import { AgendaSidePanel } from '@/components/agenda/AgendaSidePanel';
+import WeeklyHoursEditor from '@/components/settings/WeeklyHoursEditor';
+import { emptyWeeklyHours, workingHoursPolicy, validateWeeklyOperatingHours, type OperatingPeriod, type ScheduleException, type WeeklyOperatingHours } from '@/scheduling/operatingHours';
 
 type AgendaRpcError = { message: string; code?: string; details?: string; hint?: string };
 type AgendaRpcResult<T> = { data: T | null; error: AgendaRpcError | null };
@@ -114,10 +116,23 @@ function loadAgendaPreferences(): AgendaSessionPreferences {
     return {};
   }
 }
-const halfHourSlots = Array.from({ length: 22 }, (_, index) => {
+const defaultHalfHourSlots = Array.from({ length: 22 }, (_, index) => {
   const minutes = 8 * 60 + index * 30;
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 });
+function createHalfHourSlots(start: string, end: string) {
+  const startMinutes = Math.floor(timeToMinutes(start) / 30) * 30;
+  const endMinutes = Math.ceil(timeToMinutes(end) / 30) * 30;
+  return Array.from({ length: Math.max(0, (endMinutes - startMinutes) / 30) }, (_, index) => {
+    const value = startMinutes + index * 30;
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  });
+}
+function isoDateInTimezone(value: string | Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value));
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
 function halfHourKey(date: Date) {
   const hour = String(date.getHours()).padStart(2, '0');
   return `${hour}:${date.getMinutes() < 30 ? '00' : '30'}`;
@@ -217,7 +232,12 @@ export default function AppointmentsPage() {
   const [blocksDialogOpen, setBlocksDialogOpen] = useState(false);
   const [waitlistDialogOpen, setWaitlistDialogOpen] = useState(false);
   const [availabilityProfessional, setAvailabilityProfessional] = useState('unassigned');
-  const [availabilityDraft, setAvailabilityDraft] = useState<Record<number, { isActive: boolean; start: string; end: string }>>({});
+  const [availabilityDraft, setAvailabilityDraft] = useState<WeeklyOperatingHours>(emptyWeeklyHours());
+  const [professionalExceptionDate, setProfessionalExceptionDate] = useState('');
+  const [professionalExceptionClosed, setProfessionalExceptionClosed] = useState(true);
+  const [professionalExceptionStart, setProfessionalExceptionStart] = useState('08:00');
+  const [professionalExceptionEnd, setProfessionalExceptionEnd] = useState('12:00');
+  const [professionalExceptionReason, setProfessionalExceptionReason] = useState('');
   const [blockProfessional, setBlockProfessional] = useState('all');
   const [blockStartDate, setBlockStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [blockStartTime, setBlockStartTime] = useState('09:00');
@@ -261,7 +281,7 @@ export default function AppointmentsPage() {
   const { data: locations = [] } = useQuery({
     queryKey: ['clinic-locations', clinicId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('clinic_locations').select('id,name,is_primary,active').eq('clinic_id', clinicId!).eq('active', true).order('is_primary', { ascending: false }).order('name');
+      const { data, error } = await supabase.from('clinic_locations').select('*').eq('clinic_id', clinicId!).eq('active', true).order('is_primary', { ascending: false }).order('name');
       if (error) throw error;
       return data || [];
     },
@@ -305,7 +325,7 @@ export default function AppointmentsPage() {
   }, [currentDate, viewMode]);
 
   const { data: appointments = [], isLoading: appointmentsLoading, isError: appointmentsError, refetch: refetchAppointments } = useQuery({
-    queryKey: ['appointments', clinicId, rangeStart.toISOString(), rangeEnd.toISOString()],
+    queryKey: ['appointments', clinicId, selectedLocationId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('appointments')
@@ -320,6 +340,47 @@ export default function AppointmentsPage() {
     },
     enabled: !!clinicId && !!selectedLocationId,
   });
+  const { data: scheduleExceptions = [] } = useQuery({
+    queryKey: ['agenda-schedule-exceptions', clinicId, selectedLocationId, format(rangeStart, 'yyyy-MM-dd'), format(rangeEnd, 'yyyy-MM-dd')],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('scheduling_exceptions').select('*')
+        .eq('clinic_id', clinicId!).eq('location_id', selectedLocationId)
+        .gte('exception_date', format(rangeStart, 'yyyy-MM-dd')).lte('exception_date', format(rangeEnd, 'yyyy-MM-dd'));
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicId && !!selectedLocationId,
+  });
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId);
+  const locationHours = useMemo(() => {
+    const candidate = selectedLocation?.opening_hours as WeeklyOperatingHours | null | undefined;
+    return candidate && validateWeeklyOperatingHours(candidate).length === 0 ? candidate : null;
+  }, [selectedLocation]);
+  const locationScheduleExceptions = useMemo<ScheduleException[]>(() => scheduleExceptions
+    .filter((item) => !item.professional_id)
+    .map((item) => ({
+      date: item.exception_date, closed: item.is_closed,
+      periods: (item.periods as unknown as OperatingPeriod[] | null) || undefined,
+      kind: item.kind as ScheduleException['kind'], reason: item.reason || undefined,
+    })), [scheduleExceptions]);
+  const datesWithExistingEvents = useMemo(() => new Set(appointments.map((appointment) =>
+    isoDateInTimezone(appointment.start_time || appointment.scheduled_at, selectedLocation?.timezone || 'America/Sao_Paulo'),
+  )), [appointments, selectedLocation?.timezone]);
+  const visibleCalendarDays = useMemo(() => {
+    if (viewMode !== 'week' || !selectedLocation?.hide_closed_days || !locationHours) return calendarDays;
+    const visibleDates = new Set(workingHoursPolicy.getVisibleWeekDays(
+      calendarDays.map((day) => format(day, 'yyyy-MM-dd')), locationHours, locationScheduleExceptions, datesWithExistingEvents,
+    ));
+    return calendarDays.filter((day) => visibleDates.has(format(day, 'yyyy-MM-dd')));
+  }, [calendarDays, datesWithExistingEvents, locationHours, locationScheduleExceptions, selectedLocation?.hide_closed_days, viewMode]);
+  const halfHourSlots = useMemo(() => {
+    if (!selectedLocation?.limit_calendar_to_operating_hours || !locationHours) return defaultHalfHourSlots;
+    const periods = (viewMode === 'week' ? visibleCalendarDays : [currentDate]).flatMap((day) =>
+      workingHoursPolicy.getLocationOperatingPeriods(format(day, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions),
+    );
+    const range = workingHoursPolicy.getVisibleTimeRange(periods);
+    return range ? createHalfHourSlots(range.start, range.end) : [];
+  }, [currentDate, locationHours, locationScheduleExceptions, selectedLocation?.limit_calendar_to_operating_hours, viewMode, visibleCalendarDays]);
 
   const selectedPatientLookupId = selectedPatient || prefillPatientId || '';
   const { data: patients = [] } = useQuery({
@@ -421,7 +482,7 @@ export default function AppointmentsPage() {
   }, [isProfessional, professionalIdsKey, currentProfessionalId, professionals]);
 
   const { data: availability = [] } = useQuery({
-    queryKey: ['professional-availability', clinicId],
+    queryKey: ['professional-availability', clinicId, selectedLocationId],
     queryFn: async () => {
       const { data, error } = await supabase.from('professional_availability')
         .select('*')
@@ -437,7 +498,7 @@ export default function AppointmentsPage() {
   });
 
   const { data: appointmentBlocks = [] } = useQuery({
-    queryKey: ['appointment-blocks', clinicId, rangeStart.toISOString(), rangeEnd.toISOString()],
+    queryKey: ['appointment-blocks', clinicId, selectedLocationId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
       const from = startOfDay(addDays(rangeStart, -14)).toISOString();
       const to = endOfDay(addDays(rangeEnd, 30)).toISOString();
@@ -601,16 +662,14 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     if (!availabilityProfessional || availabilityProfessional === 'unassigned') return;
-    const nextDraft = weekDays.reduce((acc, day) => {
-      const slot = availability.find((item) => item.professional_id === availabilityProfessional && item.day_of_week === day.value && item.is_active);
-      acc[day.value] = {
-        isActive: !!slot,
-        start: slot ? String(slot.start_time).slice(0, 5) : '09:00',
-        end: slot ? String(slot.end_time).slice(0, 5) : '18:00',
-      };
-      return acc;
-    }, {} as Record<number, { isActive: boolean; start: string; end: string }>);
-    setAvailabilityDraft(nextDraft);
+    const weekdays = weekDays.reduce<WeeklyOperatingHours['weekdays']>((result, day) => {
+      result[String(day.value) as keyof WeeklyOperatingHours['weekdays']] = availability
+        .filter((item) => item.professional_id === availabilityProfessional && item.day_of_week === day.value && item.is_active)
+        .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)))
+        .map((item) => ({ start: String(item.start_time).slice(0, 5), end: String(item.end_time).slice(0, 5) }));
+      return result;
+    }, {});
+    setAvailabilityDraft({ schemaVersion: 1, weekdays });
   }, [availabilityProfessional, availability]);
 
   useEffect(() => {
@@ -678,13 +737,25 @@ export default function AppointmentsPage() {
     if (!professionalId) return true;
     const startMinutes = timeToMinutes(time);
     const endMinutes = startMinutes + durationMinutes;
-    return availability.some((slot) =>
-      slot.professional_id === professionalId &&
-      slot.day_of_week === day.getDay() &&
-      timeToMinutes(slot.start_time) <= startMinutes &&
-      timeToMinutes(slot.end_time) >= endMinutes
-    );
-  }, [availability]);
+    const recurringProfessionalPeriods = availability
+      .filter((slot) => slot.professional_id === professionalId && slot.day_of_week === day.getDay() && slot.is_active)
+      .map((slot) => ({ start: String(slot.start_time).slice(0, 5), end: String(slot.end_time).slice(0, 5) }));
+    const professionalExceptions = scheduleExceptions
+      .filter((item) => item.professional_id === professionalId)
+      .map((item) => ({
+        date: item.exception_date, closed: item.is_closed,
+        periods: (item.periods as unknown as OperatingPeriod[] | null) || undefined,
+        kind: item.kind as ScheduleException['kind'], reason: item.reason || undefined,
+      }));
+    const effectivePeriods = locationHours
+      ? workingHoursPolicy.getEffectiveWorkingPeriods({
+          date: format(day, 'yyyy-MM-dd'), locationHours,
+          professionalHours: { [String(day.getDay())]: recurringProfessionalPeriods },
+          locationExceptions: locationScheduleExceptions, professionalExceptions,
+        })
+      : recurringProfessionalPeriods;
+    return effectivePeriods.some((period) => timeToMinutes(period.start) <= startMinutes && timeToMinutes(period.end) >= endMinutes);
+  }, [availability, locationHours, locationScheduleExceptions, scheduleExceptions]);
 
   const visibleProfessionalId = filterProfessional !== 'all' && filterProfessional !== 'unassigned'
     ? filterProfessional
@@ -937,6 +1008,8 @@ export default function AppointmentsPage() {
       if (!clinicId || !availabilityProfessional || availabilityProfessional === 'unassigned') {
         throw new Error('Selecione um profissional.');
       }
+      const validationErrors = validateWeeklyOperatingHours(availabilityDraft);
+      if (validationErrors.length > 0) throw new Error(validationErrors[0]);
 
       const { error: deleteError } = await supabase.from('professional_availability')
         .delete()
@@ -945,18 +1018,17 @@ export default function AppointmentsPage() {
         .eq('professional_id', availabilityProfessional);
       if (deleteError) throw deleteError;
 
-      const rows = weekDays
-        .map((day) => ({ day, config: availabilityDraft[day.value] }))
-        .filter(({ config }) => config?.isActive)
-        .map(({ day, config }) => ({
+      const rows = weekDays.flatMap((day) =>
+        (availabilityDraft.weekdays[String(day.value) as keyof WeeklyOperatingHours['weekdays']] || []).map((period) => ({
           clinic_id: clinicId,
           location_id: selectedLocationId,
           professional_id: availabilityProfessional,
           day_of_week: day.value,
-          start_time: config.start,
-          end_time: config.end,
+          start_time: period.start,
+          end_time: period.end,
           is_active: true,
-        }));
+        })),
+      );
 
       if (rows.length > 0) {
         const { error: insertError } = await supabase.from('professional_availability').insert(rows);
@@ -969,6 +1041,35 @@ export default function AppointmentsPage() {
       toast({ title: 'Disponibilidade atualizada' });
     },
     onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+  });
+
+  const saveProfessionalExceptionMutation = useMutation({
+    mutationFn: async () => {
+      if (!clinicId || !selectedLocationId || !availabilityProfessional || availabilityProfessional === 'unassigned' || !professionalExceptionDate) {
+        throw new Error('Selecione profissional e data.');
+      }
+      if (!professionalExceptionClosed && timeToMinutes(professionalExceptionEnd) <= timeToMinutes(professionalExceptionStart)) {
+        throw new Error('O fim do horário especial precisa ser posterior ao início.');
+      }
+      const query = supabase.from('scheduling_exceptions');
+      const { error: deleteError } = await query.delete().eq('clinic_id', clinicId).eq('location_id', selectedLocationId)
+        .eq('professional_id', availabilityProfessional).eq('exception_date', professionalExceptionDate);
+      if (deleteError) throw deleteError;
+      const { error } = await query.insert({
+        clinic_id: clinicId, location_id: selectedLocationId, professional_id: availabilityProfessional,
+        exception_date: professionalExceptionDate, is_closed: professionalExceptionClosed,
+        periods: professionalExceptionClosed ? null : [{ start: professionalExceptionStart, end: professionalExceptionEnd }],
+        kind: professionalExceptionClosed ? 'day_off' : 'special_hours', reason: professionalExceptionReason.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agenda-schedule-exceptions'] });
+      setProfessionalExceptionDate('');
+      setProfessionalExceptionReason('');
+      toast({ title: 'Exceção do profissional salva' });
+    },
+    onError: (error: Error) => toast({ title: 'Erro', description: error.message, variant: 'destructive' }),
   });
 
   const createBlockMutation = useMutation({
@@ -1287,6 +1388,10 @@ export default function AppointmentsPage() {
   const currentTimeSlotIndex = Math.floor((currentMinutes - agendaStartMinutes) / 30);
   const currentTimeOffset = ((currentMinutes % 30) / 30) * 48;
   const currentTimeDayOffset = ((currentMinutes % 30) / 30) * 58;
+  const currentDateOperatingPeriods = locationHours
+    ? workingHoursPolicy.getLocationOperatingPeriods(format(currentDate, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions)
+    : [];
+  const isCurrentDateClosed = !!locationHours && currentDateOperatingPeriods.length === 0;
 
   return (
     <div>
@@ -1656,20 +1761,20 @@ export default function AppointmentsPage() {
 
       {!appointmentsLoading && !appointmentsError && viewMode === 'week' && (
         <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-auto rounded-xl bg-card shadow-card animate-fade-in">
-          <div className="grid min-w-[820px] grid-cols-[64px_repeat(7,minmax(108px,1fr))]">
+          <div className="grid min-w-[680px]" style={{ gridTemplateColumns: `64px repeat(${Math.max(visibleCalendarDays.length, 1)}, minmax(108px, 1fr))` }}>
             <div className="sticky left-0 top-0 z-30 border-b border-r bg-card" />
-            {calendarDays.map((day, i) => {
+            {visibleCalendarDays.map((day) => {
               const isToday = isSameDay(day, now);
-              return <div key={day.toISOString()} className={`sticky top-0 z-20 border-b border-r px-2 py-2 text-center ${isToday ? 'bg-primary/10' : 'bg-secondary/95'}`}><span className="text-xs text-muted-foreground">{dayNames[i]}</span> <span className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</span></div>;
+              return <div key={day.toISOString()} className={`sticky top-0 z-20 border-b border-r px-2 py-2 text-center ${isToday ? 'bg-primary/10' : 'bg-secondary/95'}`}><span className="text-xs text-muted-foreground">{dayNames[day.getDay()]}</span> <span className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</span>{datesWithExistingEvents.has(format(day, 'yyyy-MM-dd')) && locationHours && !workingHoursPolicy.isLocationOpen(format(day, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions) && <span className="ml-1 text-[9px] text-amber-700">exceção</span>}</div>;
             })}
             <div className="sticky left-0 z-10 border-b border-r bg-card" />
-            {calendarDays.map((day) => {
+            {visibleCalendarDays.map((day) => {
               const dayBlocks = getBlocksForDay(day);
               return <div key={`blocks-${day.toISOString()}`} className="min-h-8 border-b border-r p-1">{dayBlocks.length > 0 && <div className="truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] text-amber-700"><Lock className="mr-1 inline h-3 w-3" />{dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''}</div>}</div>;
             })}
             {halfHourSlots.flatMap((slot, slotIndex) => [
               <div key={`time-${slot}`} className="sticky left-0 z-10 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">{slot}</div>,
-              ...calendarDays.map((day) => {
+              ...visibleCalendarDays.map((day) => {
                 const dayAppointments = getApptsForDay(day);
                 const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
                 const slotStart = new Date(`${format(day, 'yyyy-MM-dd')}T${slot}:00`);
@@ -1703,7 +1808,7 @@ export default function AppointmentsPage() {
               }),
             ])}
             <div className="sticky left-0 z-10 border-r bg-card px-1 py-2 text-right text-[9px] text-muted-foreground">Extras</div>
-            {calendarDays.map((day) => (
+            {visibleCalendarDays.map((day) => (
               <div key={`extras-${day.toISOString()}`} className="min-h-9 border-r p-1">
                 {getApptsForDay(day).filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
                   <button key={appointment.id} type="button" className="w-full rounded-md border bg-background p-1.5 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
@@ -1719,6 +1824,12 @@ export default function AppointmentsPage() {
 
       {!appointmentsLoading && !appointmentsError && viewMode === 'day' && (
         <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-y-auto rounded-xl bg-card p-3 shadow-card animate-fade-in">
+          {isCurrentDateClosed && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">Unidade fechada neste dia</p>
+              <p className="mt-1 text-xs text-amber-700">Não serão oferecidos novos horários. Agendamentos já existentes continuam visíveis como exceção operacional.</p>
+            </div>
+          )}
           {getBlocksForDay(currentDate).length > 0 && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-800">Dia com bloqueios operacionais</p>
@@ -1731,7 +1842,7 @@ export default function AppointmentsPage() {
               </div>
             </div>
           )}
-          <div className="divide-y">
+          {(!isCurrentDateClosed || getApptsForDay(currentDate).length > 0) && <div className="divide-y">
             {halfHourSlots.map((slot, slotIndex) => {
               const dayAppointments = getApptsForDay(currentDate);
               const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
@@ -1779,7 +1890,7 @@ export default function AppointmentsPage() {
                 <span className="ml-2 text-xs text-muted-foreground">Fora da grade operacional</span>
               </button>
             ))}
-          </div>
+          </div>}
         </div>
       )}
         </main>
@@ -2178,9 +2289,7 @@ export default function AppointmentsPage() {
 
       <Dialog open={availabilityDialogOpen} onOpenChange={setAvailabilityDialogOpen}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Disponibilidade semanal</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Disponibilidade semanal por profissional</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label>Profissional</Label>
@@ -2195,50 +2304,17 @@ export default function AppointmentsPage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-3">
-              {weekDays.map((day) => {
-                const row = availabilityDraft[day.value] || { isActive: false, start: '09:00', end: '18:00' };
-                return (
-                  <div key={day.value} className="grid grid-cols-[160px_100px_1fr_1fr] gap-3 items-center rounded-xl border p-3">
-                    <p className="text-sm font-medium text-foreground">{day.label}</p>
-                    <Select
-                      value={row.isActive ? 'active' : 'inactive'}
-                      onValueChange={(value) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: {
-                          ...row,
-                          isActive: value === 'active',
-                        },
-                      }))}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Ativo</SelectItem>
-                        <SelectItem value="inactive">Inativo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="time"
-                      value={row.start}
-                      disabled={!row.isActive}
-                      onChange={(event) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: { ...row, start: event.target.value },
-                      }))}
-                    />
-                    <Input
-                      type="time"
-                      value={row.end}
-                      disabled={!row.isActive}
-                      onChange={(event) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: { ...row, end: event.target.value },
-                      }))}
-                    />
-                  </div>
-                );
-              })}
+            <p className="text-xs text-muted-foreground">Unidade: {locations.find((location) => location.id === selectedLocationId)?.name || 'Unidade selecionada'}. É possível cadastrar vários períodos no mesmo dia, por exemplo manhã e tarde.</p>
+            <WeeklyHoursEditor idPrefix={`professional-${availabilityProfessional}`} value={availabilityDraft} onChange={setAvailabilityDraft} />
+            <div className="space-y-3 rounded-xl border p-4">
+              <p className="text-sm font-semibold">Folga ou horário especial por data</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div><Label htmlFor="professional-exception-date">Data</Label><Input id="professional-exception-date" type="date" value={professionalExceptionDate} onChange={(event) => setProfessionalExceptionDate(event.target.value)} /></div>
+                <div><Label>Regra</Label><Select value={professionalExceptionClosed ? 'closed' : 'special'} onValueChange={(value) => setProfessionalExceptionClosed(value === 'closed')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="closed">Folga / ausência</SelectItem><SelectItem value="special">Horário especial</SelectItem></SelectContent></Select></div>
+                <div><Label htmlFor="professional-exception-reason">Motivo</Label><Input id="professional-exception-reason" value={professionalExceptionReason} onChange={(event) => setProfessionalExceptionReason(event.target.value)} placeholder="Férias, congresso..." /></div>
+              </div>
+              {!professionalExceptionClosed && <div className="grid max-w-md grid-cols-[1fr_auto_1fr] items-center gap-2"><Input aria-label="Início do horário especial do profissional" type="time" value={professionalExceptionStart} onChange={(event) => setProfessionalExceptionStart(event.target.value)} /><span>até</span><Input aria-label="Fim do horário especial do profissional" type="time" value={professionalExceptionEnd} onChange={(event) => setProfessionalExceptionEnd(event.target.value)} /></div>}
+              <BrandButton type="button" variant="outline" onClick={() => saveProfessionalExceptionMutation.mutate()} disabled={saveProfessionalExceptionMutation.isPending || !professionalExceptionDate}>Salvar exceção</BrandButton>
             </div>
 
             <div className="flex gap-3 pt-2">

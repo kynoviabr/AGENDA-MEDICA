@@ -26,6 +26,9 @@ export interface InternalLocationRecord {
   timezone: string;
   active: boolean;
   is_primary: boolean;
+  opening_hours: unknown;
+  hide_closed_days: boolean;
+  limit_calendar_to_operating_hours: boolean;
 }
 
 export interface InternalProfessionalRecord {
@@ -33,6 +36,7 @@ export interface InternalProfessionalRecord {
   full_name: string;
   specialty: string | null;
   status: string;
+  working_hours?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
 }
 
 export interface InternalServiceRecord {

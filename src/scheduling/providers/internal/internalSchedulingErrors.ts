@@ -62,6 +62,7 @@ export function mapInternalSchedulingError(error: unknown): SchedulingError {
     || text.includes('AGENDA_INVALID')
     || text.includes('AGENDA_INSURANCE_REQUIRED')
     || text.includes('AGENDA_DURATION_MISMATCH')
+    || text.includes('AGENDA_OUTSIDE_OPERATING_HOURS')
     || text.includes('AGENDA_OUTSIDE_AVAILABILITY')
     || text.includes('AGENDA_BLOCKED')
     || text.includes('AGENDA_TREATMENT_NOT_OFFERED')

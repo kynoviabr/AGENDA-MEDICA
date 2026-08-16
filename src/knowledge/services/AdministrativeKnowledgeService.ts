@@ -10,10 +10,7 @@ import type {
 import type { AdministrativeKnowledgeRepository } from '../repositories/AdministrativeKnowledgeRepository.ts';
 
 const MAX_FACTS = 8;
-const DAYS: Record<string, string> = {
-  monday: 'segunda-feira', tuesday: 'terça-feira', wednesday: 'quarta-feira', thursday: 'quinta-feira',
-  friday: 'sexta-feira', saturday: 'sábado', sunday: 'domingo',
-};
+const DAYS: Record<string, string> = { '0': 'domingo', '1': 'segunda-feira', '2': 'terça-feira', '3': 'quarta-feira', '4': 'quinta-feira', '5': 'sexta-feira', '6': 'sábado' };
 
 export class AdministrativeKnowledgeService {
   constructor(private readonly repository: AdministrativeKnowledgeRepository, private readonly now: () => Date = () => new Date()) {}
@@ -91,7 +88,8 @@ export class AdministrativeKnowledgeService {
       if (contacts.length) facts.push(fact(`Contato da ${clinic.name}: ${contacts.join(', ')}.`, source('clinics', clinic.id, 'contacts', clinic.name)));
     }
 
-    const curated = rankEntries(entries, input, topic, locationMatches.map((item) => item.id), professionalMatches.map((item) => item.id), serviceMatches.map((item) => item.id), insuranceMatches.map((item) => item.id), this.now());
+    const structuredOpeningHours = topic === 'opening_hours' && facts.some((item) => item.source.table === 'clinic_locations' && item.source.field === 'opening_hours');
+    const curated = structuredOpeningHours ? [] : rankEntries(entries, input, topic, locationMatches.map((item) => item.id), professionalMatches.map((item) => item.id), serviceMatches.map((item) => item.id), insuranceMatches.map((item) => item.id), this.now());
     for (const entry of curated) facts.push(fact(entry.answer, {
       sourceType: 'curated', table: 'administrative_knowledge_entries', recordId: entry.id,
       label: entry.question, revision: entry.revision, verifiedAt: entry.verifiedAt,
@@ -184,9 +182,9 @@ function deduplicateFacts(items: readonly AdministrativeKnowledgeFact[]) {
   const seen = new Set<string>();
   return items.filter((item) => { const key = normalize(item.text); if (seen.has(key)) return false; seen.add(key); return true; });
 }
-function formatOpeningHours(hours?: Readonly<Record<string, readonly string[]>>) {
+function formatOpeningHours(hours?: import('../../scheduling/operatingHours/WorkingHoursPolicy.ts').WeeklyOperatingHours) {
   if (!hours) return undefined;
-  const rows = Object.entries(hours).filter(([, ranges]) => ranges.length).map(([day, ranges]) => `${DAYS[day] || day}: ${ranges.join(' e ')}`);
+  const rows = Object.entries(hours.weekdays).filter(([, periods]) => periods.length).map(([day, periods]) => `${DAYS[day] || day}: ${periods.map((period) => `${period.start}–${period.end}`).join(' e ')}`);
   return rows.length ? rows.join('; ') + '.' : undefined;
 }
 function topicLabel(topic: AdministrativeKnowledgeTopic) { return topic.replaceAll('_', ' '); }

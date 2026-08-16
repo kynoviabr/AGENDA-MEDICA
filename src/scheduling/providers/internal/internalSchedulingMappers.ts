@@ -23,6 +23,7 @@ import type {
   InternalServiceRecord,
   InternalSlotRecord,
 } from './InternalSchedulingDataSource.ts';
+import { validateWeeklyOperatingHours, type WeeklyOperatingHours } from '../../operatingHours/WorkingHoursPolicy.ts';
 
 interface DomainStatusMapping {
   status: SchedulingAppointmentStatus;
@@ -65,21 +66,31 @@ export function mapInternalAppointmentType(value: string): SchedulingAppointment
 }
 
 export function mapInternalLocation(record: InternalLocationRecord): SchedulingLocation {
+  const openingHours = record.opening_hours as WeeklyOperatingHours | null;
   return {
     id: record.id,
     name: record.name,
     timezone: record.timezone,
     active: record.active,
     isPrimary: record.is_primary,
+    openingHours: openingHours && validateWeeklyOperatingHours(openingHours).length === 0 ? openingHours : undefined,
+    hideClosedDays: record.hide_closed_days,
+    limitCalendarToOperatingHours: record.limit_calendar_to_operating_hours,
   };
 }
 
 export function mapInternalProfessional(record: InternalProfessionalRecord): SchedulingProfessional {
+  const workingHours = record.working_hours?.reduce<NonNullable<SchedulingProfessional['workingHours']>>((result, period) => {
+    const key = String(period.day_of_week) as keyof NonNullable<SchedulingProfessional['workingHours']>;
+    result[key] = [...(result[key] || []), { start: period.start_time.slice(0, 5), end: period.end_time.slice(0, 5) }];
+    return result;
+  }, {});
   return {
     id: record.id,
     fullName: record.full_name,
     specialty: record.specialty || undefined,
     active: record.status === 'active',
+    workingHours,
   };
 }
 

@@ -73,7 +73,7 @@ export interface AdministrativeLocationRecord {
   phone?: string;
   timezone: string;
   isPrimary: boolean;
-  openingHours?: Readonly<Record<string, readonly string[]>>;
+  openingHours?: import('../../scheduling/operatingHours/WorkingHoursPolicy.ts').WeeklyOperatingHours;
   parkingInformation?: string;
   accessibilityInformation?: string;
 }

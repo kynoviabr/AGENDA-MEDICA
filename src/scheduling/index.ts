@@ -15,3 +15,4 @@ export * from './errors/SchedulingError.ts';
 export * from './providers/SchedulingProvider.ts';
 export * from './providers/internal/index.ts';
 export * from './services/SchedulingService.ts';
+export * from './operatingHours/index.ts';

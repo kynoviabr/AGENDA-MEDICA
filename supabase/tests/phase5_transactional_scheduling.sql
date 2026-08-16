@@ -33,6 +33,12 @@ BEGIN
     (c1,'Phase 5 Clinic A','phase5-test-a'),(c2,'Phase 5 Clinic B','phase5-test-b');
   SELECT id INTO l1 FROM public.clinic_locations WHERE clinic_id=c1 AND is_primary;
   INSERT INTO public.clinic_locations(clinic_id,name,timezone) VALUES(c1,'Unit 2','America/Sao_Paulo') RETURNING id INTO l2;
+  UPDATE public.clinic_locations
+  SET opening_hours = jsonb_build_object('schemaVersion', 1, 'weekdays', jsonb_build_object(
+    EXTRACT(DOW FROM DATE '2099-01-05')::integer::text,
+    jsonb_build_array(jsonb_build_object('start', '08:00', 'end', '18:00'))
+  ))
+  WHERE id IN (l1, l2);
   INSERT INTO public.professionals(id,clinic_id,user_id,full_name,status)
     VALUES(p1,c1,NULL,'Professional without login','active');
   INSERT INTO public.professional_locations(clinic_id,professional_id,location_id) VALUES

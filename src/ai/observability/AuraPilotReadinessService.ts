@@ -14,6 +14,7 @@ export interface AuraPilotSnapshot {
   hasProfessional: boolean;
   hasService: boolean;
   hasInsurance: boolean;
+  hasOperatingHours: boolean;
   hasSchedulingRules: boolean;
   authorizedStaffCount: number;
   publishedKnowledgeCount: number;
@@ -53,6 +54,7 @@ export class AuraPilotReadinessService {
       { key: 'whatsapp', state: snapshot.whatsappConfigured ? 'healthy' : 'unhealthy', required: true, code: snapshot.whatsappConfigured ? 'WHATSAPP_CONFIGURED' : 'WHATSAPP_NOT_CONFIGURED' },
       { key: 'openai_configuration', state: snapshot.openAiConfigured ? 'healthy' : 'degraded', required: snapshot.gates.engineMode !== 'legacy', code: snapshot.openAiConfigured ? 'OPENAI_CONFIGURED' : 'OPENAI_NOT_CONFIGURED' },
       { key: 'catalog', state: snapshot.hasLocation && snapshot.hasProfessional && snapshot.hasService ? 'healthy' : 'unhealthy', required: true, code: 'CLINIC_CATALOG' },
+      { key: 'operating_hours', state: snapshot.hasOperatingHours ? 'healthy' : 'unhealthy', required: true, code: snapshot.hasOperatingHours ? 'OPERATING_HOURS_CONFIGURED' : 'OPERATING_HOURS_NOT_CONFIGURED' },
       { key: 'scheduling', state: snapshot.hasSchedulingRules ? 'healthy' : 'unhealthy', required: true, code: snapshot.hasSchedulingRules ? 'SCHEDULING_CONFIGURED' : 'SCHEDULING_NOT_CONFIGURED' },
       { key: 'staff', state: snapshot.authorizedStaffCount > 0 ? 'healthy' : 'unhealthy', required: snapshot.gates.handoffEnabled, code: snapshot.authorizedStaffCount > 0 ? 'AUTHORIZED_STAFF_AVAILABLE' : 'NO_AUTHORIZED_STAFF' },
     ];

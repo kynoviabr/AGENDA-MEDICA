@@ -36,6 +36,7 @@ import {
   SchedulingValidationError,
 } from '../errors/SchedulingError.ts';
 import type { SchedulingProvider, SchedulingProviderResolver } from '../providers/SchedulingProvider.ts';
+import { workingHoursPolicy } from '../operatingHours/WorkingHoursPolicy.ts';
 
 type SchedulingProviderDependency = SchedulingProvider | SchedulingProviderResolver;
 
@@ -84,7 +85,29 @@ export class SchedulingService {
   getAvailableSlots(context: SchedulingContext, input: GetAvailableSlotsInput): Promise<SchedulingSlot[]> {
     return this.execute(context, 'readAvailability', async (provider) => {
       if (!provider.getAvailableSlots) throw new SchedulingCapabilityNotSupportedError(provider.type, 'readAvailability');
-      return provider.getAvailableSlots(context, input);
+      const slots = await provider.getAvailableSlots(context, input);
+      if (provider.type === 'internal') return slots;
+      if (!provider.listLocations || !provider.listProfessionals) return [];
+
+      const [locations, professionals] = await Promise.all([
+        provider.listLocations(context, { activeOnly: true }),
+        provider.listProfessionals(context, { locationId: input.locationId, activeOnly: true }),
+      ]);
+      const location = locations.find((item) => item.id === input.locationId);
+      const professional = professionals.find((item) => item.id === input.professionalId);
+      if (!location?.openingHours || !professional?.workingHours) return [];
+
+      const periodsByDate = new Map<string, Array<{ start: string; end: string }>>();
+      const cursor = new Date(`${input.dateRange.from}T00:00:00.000Z`);
+      const end = new Date(`${input.dateRange.to}T00:00:00.000Z`);
+      while (cursor <= end && periodsByDate.size <= 121) {
+        const date = cursor.toISOString().slice(0, 10);
+        periodsByDate.set(date, workingHoursPolicy.getEffectiveWorkingPeriods({
+          date, locationHours: location.openingHours, professionalHours: professional.workingHours,
+        }));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+      return slots.filter((slot) => workingHoursPolicy.isInstantInsidePeriods(slot.startAt, location.timezone, periodsByDate));
     });
   }
 

@@ -100,7 +100,8 @@ describe('SupabaseInternalSchedulingDataSource', () => {
   it('resolves professionals assigned to a location without crossing clinic scope', async () => {
     const links = ok([{ professional_id: 'professional-1' }]);
     const professionals = ok([{ id: 'professional-1', full_name: 'Dra. Aura', specialty: 'Dermatologia', status: 'active' }]);
-    const { client } = createClient({ professional_locations: [links], professionals: [professionals] });
+    const availability = ok([{ professional_id: 'professional-1', day_of_week: 1, start_time: '08:00:00', end_time: '18:00:00' }]);
+    const { client } = createClient({ professional_locations: [links], professionals: [professionals], professional_availability: [availability] });
     const dataSource = new SupabaseInternalSchedulingDataSource(client);
 
     await expect(dataSource.listProfessionals(context, { locationId: 'location-1', activeOnly: true })).resolves.toHaveLength(1);
@@ -109,6 +110,9 @@ describe('SupabaseInternalSchedulingDataSource', () => {
     ]));
     expect(professionals.calls).toEqual(expect.arrayContaining([
       ['eq', 'clinic_id', 'clinic-a'], ['eq', 'status', 'active'], ['in', 'id', ['professional-1']],
+    ]));
+    expect(availability.calls).toEqual(expect.arrayContaining([
+      ['eq', 'clinic_id', 'clinic-a'], ['eq', 'location_id', 'location-1'], ['eq', 'is_active', true],
     ]));
   });
 

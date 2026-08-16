@@ -8,7 +8,7 @@ function repository(overrides: Partial<AdministrativeKnowledgeRepository> = {}):
     listLocations: async () => [{
       id: 'location-a', name: 'Unidade Centro', addressLine: 'Rua A, 10', city: 'São Paulo', state: 'SP', zipCode: '01000-000',
       timezone: 'America/Sao_Paulo', isPrimary: true, parkingInformation: 'Estacionamento conveniado ao lado.',
-      openingHours: { monday: ['08:00–18:00'] },
+      openingHours: { schemaVersion: 1, weekdays: { '1': [{ start: '08:00', end: '18:00' }] } },
     }],
     listProfessionals: async () => [{ id: 'professional-a', fullName: 'Dra. Ana', specialty: 'Dermatologia' }],
     listServices: async () => [{ id: 'service-a', name: 'Endoscopia', preparationInstructions: 'Jejum conforme orientação entregue pela clínica.' }],
@@ -59,5 +59,15 @@ describe('5.6D AdministrativeKnowledgeService', () => {
     }] }), () => new Date('2026-08-15T00:00:00Z'));
     const result = await service.search({ clinicId: 'clinic-a' }, { query: 'Posso levar acompanhante?' });
     expect(result.facts).toContainEqual(expect.objectContaining({ source: expect.objectContaining({ table: 'administrative_knowledge_entries', revision: 3 }) }));
+  });
+
+  it('keeps structured opening hours authoritative over conflicting curated content', async () => {
+    const service = new AdministrativeKnowledgeService(repository({ listPublishedEntries: async () => [{
+      id: 'faq-hours', topic: 'opening_hours', scope: 'clinic', question: 'Abre domingo?', answer: 'Aberto aos domingos.',
+      keywords: ['domingo', 'aberto'], priority: 100, revision: 1, verifiedAt: '2026-08-14T00:00:00Z',
+    }] }));
+    const result = await service.search({ clinicId: 'clinic-a' }, { query: 'Qual o horário de funcionamento?' });
+    expect(result.facts[0].text).toContain('segunda-feira: 08:00–18:00');
+    expect(result.facts).not.toContainEqual(expect.objectContaining({ text: 'Aberto aos domingos.' }));
   });
 });

@@ -39,7 +39,7 @@ export class SupabaseAdministrativeKnowledgeRepository implements Administrative
   async listLocations(context: AdministrativeKnowledgeContext): Promise<readonly AdministrativeLocationRecord[]> {
     const rows = await unwrap<Array<{
       id: string; name: string; address_line: string | null; city: string | null; state: string | null; zip_code: string | null;
-      phone: string | null; timezone: string; is_primary: boolean; opening_hours: Record<string, string[]> | null;
+      phone: string | null; timezone: string; is_primary: boolean; opening_hours: AdministrativeLocationRecord['openingHours'] | null;
       parking_information: string | null; accessibility_information: string | null;
     }>>(this.client.from('clinic_locations')
       .select('id,name,address_line,city,state,zip_code,phone,timezone,is_primary,opening_hours,parking_information,accessibility_information')

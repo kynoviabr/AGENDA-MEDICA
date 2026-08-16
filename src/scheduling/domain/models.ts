@@ -1,4 +1,5 @@
 import type { IanaTimezone, IsoInstant, TimeRange } from './time.ts';
+import type { WeeklyOperatingHours } from '../operatingHours/WorkingHoursPolicy.ts';
 
 export type SchedulingProviderType =
   | 'internal'
@@ -58,6 +59,9 @@ export interface SchedulingLocation {
   timezone: IanaTimezone;
   active: boolean;
   isPrimary: boolean;
+  openingHours?: WeeklyOperatingHours;
+  hideClosedDays?: boolean;
+  limitCalendarToOperatingHours?: boolean;
 }
 
 export interface SchedulingProfessional {
@@ -65,6 +69,7 @@ export interface SchedulingProfessional {
   fullName: string;
   specialty?: string;
   active: boolean;
+  workingHours?: Partial<Record<'0' | '1' | '2' | '3' | '4' | '5' | '6', Array<{ start: string; end: string }>>>;
 }
 
 export interface SchedulingServiceItem {

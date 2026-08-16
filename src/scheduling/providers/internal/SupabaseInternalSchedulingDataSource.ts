@@ -99,7 +99,7 @@ export class SupabaseInternalSchedulingDataSource implements InternalSchedulingD
 
   async listLocations(context: SchedulingContext, input: ListLocationsInput): Promise<InternalLocationRecord[]> {
     let query = this.client.from('clinic_locations')
-      .select('id,name,timezone,active,is_primary')
+      .select('id,name,timezone,active,is_primary,opening_hours,hide_closed_days,limit_calendar_to_operating_hours')
       .eq('clinic_id', context.clinicId);
     if (input.activeOnly) query = query.eq('active', true);
     return unwrap<InternalLocationRecord[]>(query.order('is_primary', { ascending: false }).order('name'));
@@ -122,7 +122,21 @@ export class SupabaseInternalSchedulingDataSource implements InternalSchedulingD
       .eq('clinic_id', context.clinicId);
     if (input.activeOnly) query = query.eq('status', 'active');
     if (professionalIds) query = query.in('id', professionalIds);
-    return unwrap<InternalProfessionalRecord[]>(query.order('full_name'));
+    const professionals = await unwrap<InternalProfessionalRecord[]>(query.order('full_name'));
+    if (!input.locationId || professionals.length === 0) return professionals;
+    const availability = await unwrap<Array<{ professional_id: string; day_of_week: number; start_time: string; end_time: string }>>(
+      this.client.from('professional_availability')
+        .select('professional_id,day_of_week,start_time,end_time')
+        .eq('clinic_id', context.clinicId)
+        .eq('location_id', input.locationId)
+        .eq('is_active', true)
+        .in('professional_id', professionals.map((professional) => professional.id))
+        .order('start_time'),
+    );
+    return professionals.map((professional) => ({
+      ...professional,
+      working_hours: availability.filter((period) => period.professional_id === professional.id),
+    }));
   }
 
   async listServices(context: SchedulingContext, input: ListServicesInput): Promise<InternalServiceRecord[]> {
