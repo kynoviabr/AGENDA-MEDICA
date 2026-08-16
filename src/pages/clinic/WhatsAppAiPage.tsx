@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AlertTriangle, Bot, MessageCircle, PauseCircle, PlayCircle, Search, UserRound, UserRoundCheck } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, MessageCircle, RotateCcw, Search, Send, UserRound, UserRoundCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranding } from '@/contexts/BrandingContext';
@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,9 @@ type Conversation = {
   contact_name: string | null;
   status: 'open' | 'handoff' | 'closed';
   ai_enabled: boolean;
+  control_mode: 'ai_active' | 'handoff_pending' | 'human_active' | 'ai_resume_pending' | 'closed';
+  active_handoff_id: string | null;
+  assigned_user_id: string | null;
   last_inbound_at: string | null;
   last_outbound_at: string | null;
   last_message_at: string | null;
@@ -44,13 +48,51 @@ type Message = {
   role: 'user' | 'assistant' | 'system';
   body: string;
   ai_model: string | null;
+  message_origin: 'patient' | 'ai' | 'human' | 'system';
   created_at: string;
 };
+
+type Handoff = {
+  id: string;
+  conversation_id: string;
+  reason: string;
+  priority: 'normal' | 'high' | 'urgent';
+  status: 'requested' | 'queued' | 'assigned' | 'accepted' | 'resolved' | 'cancelled';
+  assigned_user_id: string | null;
+  requested_at: string;
+  summary: {
+    patientIntent?: string;
+    knownAdministrativeContext?: string[];
+    requestedDate?: string;
+    selectedSlot?: string;
+    pendingAction?: string;
+    lastToolOutcome?: string;
+    whatAuraAlreadyTried?: string[];
+  };
+};
+
+type StaffMember = { user_id: string; role: string; label: string };
 
 const statusLabel: Record<Conversation['status'], string> = {
   open: 'Aberta',
   handoff: 'Humano',
   closed: 'Fechada',
+};
+
+const controlLabel: Record<Conversation['control_mode'], string> = {
+  ai_active: 'IA ativa', handoff_pending: 'Aguardando atendimento',
+  human_active: 'Atendimento humano', ai_resume_pending: 'Retorno à IA pendente', closed: 'Encerrada',
+};
+
+const reasonLabel: Record<string, string> = {
+  user_requested_human: 'Paciente pediu atendimento humano', medical_out_of_scope: 'Limite administrativo da Aura',
+  urgent_language: 'Prioridade de atendimento', repeated_failure: 'Falhas operacionais repetidas',
+  repeated_ambiguity: 'Esclarecimentos repetidos', knowledge_conflict: 'Informações administrativas conflitantes',
+  knowledge_not_found: 'Informação não confirmada', provider_unavailable: 'Serviço temporariamente indisponível',
+  external_provider_write_unavailable: 'Operação externa indisponível', mutation_failure: 'Falha em operação de agenda',
+  identity_unresolved: 'Identidade não confirmada', policy_required: 'Política exige atendimento humano',
+  safety_fail_closed: 'Validação de segurança interrompeu a IA', staff_manual_takeover: 'Atendimento assumido pela equipe',
+  other: 'Outro motivo operacional',
 };
 
 function relativeDate(value: string | null) {
@@ -65,7 +107,14 @@ export default function WhatsAppAiPage() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'open' | 'handoff' | 'closed'>('all');
+  const [filter, setFilter] = useState<'all' | 'ai_active' | 'handoff_pending' | 'human_active' | 'closed'>('all');
+  const [humanMessage, setHumanMessage] = useState('');
+  const [transferUserId, setTransferUserId] = useState('');
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['whatsapp-current-user'],
+    queryFn: async () => (await supabase.auth.getUser()).data.user || null,
+  });
 
   const { data: conversations = [], isLoading, error: conversationsError } = useQuery({
     queryKey: ['whatsapp-ai-conversations', clinicId],
@@ -82,6 +131,33 @@ export default function WhatsAppAiPage() {
     retry: false,
   });
 
+  const { data: handoffs = [] } = useQuery({
+    queryKey: ['whatsapp-ai-handoffs', clinicId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ai_conversation_handoffs' as unknown)
+        .select('id,conversation_id,reason,priority,status,assigned_user_id,requested_at,summary')
+        .eq('clinic_id', clinicId!).in('status', ['requested', 'queued', 'assigned', 'accepted'])
+        .order('requested_at', { ascending: true });
+      if (error) throw error;
+      return (data || []) as Handoff[];
+    },
+    enabled: !!clinicId,
+    retry: false,
+  });
+
+  const { data: staff = [] } = useQuery({
+    queryKey: ['whatsapp-handoff-staff', clinicId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_ai_handoff_staff', { p_clinic_id: clinicId! });
+      if (error) throw error;
+      return (data || []).map((item) => ({
+        ...item, label: item.user_id === currentUser?.id ? 'Você' : item.label,
+      })) as StaffMember[];
+    },
+    enabled: !!clinicId && !!currentUser?.id,
+    retry: false,
+  });
+
   const selectedConversation = useMemo(() => {
     if (!conversations.length) return null;
     return conversations.find((conversation) => conversation.id === selectedId) || conversations[0];
@@ -92,7 +168,7 @@ export default function WhatsAppAiPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('whatsapp_ai_messages' as unknown)
-        .select('id, direction, role, body, ai_model, created_at')
+        .select('id, direction, role, body, ai_model, message_origin, created_at')
         .eq('conversation_id', selectedConversation!.id)
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -102,32 +178,53 @@ export default function WhatsAppAiPage() {
     retry: false,
   });
 
-  const updateConversation = useMutation({
-    mutationFn: async (patch: Partial<Pick<Conversation, 'status' | 'ai_enabled'>>) => {
-      if (!selectedConversation) return;
-      const { error } = await supabase
-        .from('whatsapp_ai_conversations' as unknown)
-        .update(patch as unknown)
-        .eq('id', selectedConversation.id);
+  const handoffAction = useMutation({
+    mutationFn: async ({ action, targetUserId }: { action: 'takeover' | 'unassign' | 'return_ai' | 'resolve' | 'transfer'; targetUserId?: string }) => {
+      if (!selectedConversation || !clinicId) return;
+      const call = action === 'takeover' ? ['take_over_ai_conversation', { p_clinic_id: clinicId, p_conversation_id: selectedConversation.id }]
+        : action === 'unassign' ? ['unassign_ai_conversation', { p_clinic_id: clinicId, p_conversation_id: selectedConversation.id }]
+        : action === 'transfer' ? ['transfer_ai_conversation', { p_clinic_id: clinicId, p_conversation_id: selectedConversation.id, p_target_user_id: targetUserId }]
+        : ['resolve_ai_conversation_handoff', { p_clinic_id: clinicId, p_conversation_id: selectedConversation.id, p_resolution: action === 'return_ai' ? 'returned_to_ai' : 'resolved_by_human' }];
+      const { error } = await supabase.rpc(call[0] as never, call[1] as never);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-ai-conversations', clinicId] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-ai-handoffs', clinicId] });
+      setTransferUserId('');
     },
     onError: (error: Error) => {
       toast({ title: 'Erro ao atualizar conversa', description: error.message, variant: 'destructive' });
     },
   });
 
+  const sendHumanMessage = useMutation({
+    mutationFn: async () => {
+      if (!selectedConversation || !clinicId || !humanMessage.trim()) return;
+      const { data, error } = await supabase.functions.invoke('whatsapp-human-outbound', {
+        body: { clinicId, conversationId: selectedConversation.id, body: humanMessage.trim() },
+      });
+      if (error || data?.ok !== true) throw error || new Error('Não foi possível enviar a mensagem.');
+    },
+    onSuccess: () => {
+      setHumanMessage('');
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-ai-messages', selectedConversation?.id] });
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-ai-conversations', clinicId] });
+    },
+    onError: (error: Error) => toast({ title: 'Falha ao enviar', description: error.message, variant: 'destructive' }),
+  });
+
   const filteredConversations = conversations.filter((conversation) => {
-    if (filter !== 'all' && conversation.status !== filter) return false;
+    if (filter !== 'all' && conversation.control_mode !== filter) return false;
     const haystack = `${conversation.contact_name || ''} ${conversation.phone} ${conversation.leads?.full_name || ''}`.toLowerCase();
     return haystack.includes(search.toLowerCase());
   });
 
-  const openCount = conversations.filter((item) => item.status === 'open').length;
-  const handoffCount = conversations.filter((item) => item.status === 'handoff').length;
-  const aiPausedCount = conversations.filter((item) => !item.ai_enabled).length;
+  const openCount = conversations.filter((item) => item.control_mode === 'ai_active').length;
+  const handoffCount = conversations.filter((item) => item.control_mode === 'handoff_pending').length;
+  const humanCount = conversations.filter((item) => item.control_mode === 'human_active').length;
+  const selectedHandoff = handoffs.find((item) => item.conversation_id === selectedConversation?.id) || null;
+  const isOwner = selectedConversation?.assigned_user_id === currentUser?.id;
 
   return (
     <div className="space-y-4">
@@ -158,7 +255,7 @@ export default function WhatsAppAiPage() {
         <Card className="shadow-card">
           <CardContent className="flex items-center justify-between p-4">
             <div>
-              <p className="text-xs text-muted-foreground">Humano assumiu</p>
+              <p className="text-xs text-muted-foreground">Aguardando humano</p>
               <p className="text-2xl font-semibold text-foreground">{handoffCount}</p>
             </div>
             <UserRoundCheck className="w-5 h-5 text-primary" />
@@ -167,10 +264,10 @@ export default function WhatsAppAiPage() {
         <Card className="shadow-card">
           <CardContent className="flex items-center justify-between p-4">
             <div>
-              <p className="text-xs text-muted-foreground">IA pausada</p>
-              <p className="text-2xl font-semibold text-foreground">{aiPausedCount}</p>
+              <p className="text-xs text-muted-foreground">Em atendimento humano</p>
+              <p className="text-2xl font-semibold text-foreground">{humanCount}</p>
             </div>
-            <PauseCircle className="w-5 h-5 text-primary" />
+            <UserRoundCheck className="w-5 h-5 text-primary" />
           </CardContent>
         </Card>
       </div>
@@ -184,10 +281,11 @@ export default function WhatsAppAiPage() {
                 <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar lead ou telefone" className="pl-9" />
               </div>
               <Tabs value={filter} onValueChange={(value) => setFilter(value as typeof filter)}>
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid h-auto w-full grid-cols-5">
                   <TabsTrigger value="all">Todas</TabsTrigger>
-                  <TabsTrigger value="open">Abertas</TabsTrigger>
-                  <TabsTrigger value="handoff">Humano</TabsTrigger>
+                  <TabsTrigger value="ai_active">IA</TabsTrigger>
+                  <TabsTrigger value="handoff_pending">Fila</TabsTrigger>
+                  <TabsTrigger value="human_active">Humano</TabsTrigger>
                   <TabsTrigger value="closed">Fechadas</TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -220,7 +318,12 @@ export default function WhatsAppAiPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-medium text-foreground">{conversation.contact_name || conversation.leads?.full_name || conversation.phone}</p>
-                          <Badge variant={conversation.status === 'open' ? 'default' : 'secondary'}>{statusLabel[conversation.status]}</Badge>
+                          <Badge
+                            variant={conversation.control_mode === 'ai_active' ? 'default' : 'secondary'}
+                            className={conversation.control_mode === 'handoff_pending' && handoffs.find((item) => item.conversation_id === conversation.id)?.priority === 'urgent' ? 'bg-destructive/15 text-destructive' : ''}
+                          >
+                            {controlLabel[conversation.control_mode]}
+                          </Badge>
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">{conversation.phone}</p>
                         <p className="mt-2 text-xs text-muted-foreground">{relativeDate(conversation.last_message_at)}</p>
@@ -247,27 +350,63 @@ export default function WhatsAppAiPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-base font-semibold text-foreground">{selectedConversation.contact_name || selectedConversation.leads?.full_name || selectedConversation.phone}</h2>
-                      <Badge variant={selectedConversation.ai_enabled ? 'default' : 'secondary'} className={selectedConversation.ai_enabled ? 'bg-success/15 text-success hover:bg-success/15' : ''}>
-                        {selectedConversation.ai_enabled ? 'IA ativa' : 'IA pausada'}
+                      <Badge variant={selectedConversation.control_mode === 'ai_active' ? 'default' : 'secondary'} className={selectedConversation.control_mode === 'ai_active' ? 'bg-success/15 text-success hover:bg-success/15' : ''}>
+                        {controlLabel[selectedConversation.control_mode]}
                       </Badge>
                       <Badge variant="outline">{statusLabel[selectedConversation.status]}</Badge>
+                      {selectedHandoff?.priority === 'urgent' && <Badge variant="destructive">Prioridade de atendimento</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{selectedConversation.phone}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => updateConversation.mutate({ ai_enabled: !selectedConversation.ai_enabled })}>
-                      {selectedConversation.ai_enabled ? <PauseCircle className="mr-2 w-4 h-4" /> : <PlayCircle className="mr-2 w-4 h-4" />}
-                      {selectedConversation.ai_enabled ? 'Pausar IA' : 'Ativar IA'}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => updateConversation.mutate({ status: selectedConversation.status === 'handoff' ? 'open' : 'handoff', ai_enabled: selectedConversation.status === 'handoff' })}>
+                    {(selectedConversation.control_mode === 'ai_active' || selectedConversation.control_mode === 'handoff_pending') && (
+                    <Button variant="outline" size="sm" onClick={() => handoffAction.mutate({ action: 'takeover' })} disabled={handoffAction.isPending}>
                       <UserRoundCheck className="mr-2 w-4 h-4" />
-                      {selectedConversation.status === 'handoff' ? 'Liberar IA' : 'Assumir'}
+                      Assumir atendimento
                     </Button>
+                    )}
+                    {selectedConversation.control_mode === 'human_active' && isOwner && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={() => handoffAction.mutate({ action: 'unassign' })} disabled={handoffAction.isPending}>Liberar para fila</Button>
+                        <Button variant="outline" size="sm" onClick={() => handoffAction.mutate({ action: 'return_ai' })} disabled={handoffAction.isPending}>
+                          <RotateCcw className="mr-2 w-4 h-4" />Devolver para Aura
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handoffAction.mutate({ action: 'resolve' })} disabled={handoffAction.isPending}>
+                          <CheckCircle2 className="mr-2 w-4 h-4" />Encerrar atendimento
+                        </Button>
+                      </>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => navigate('/clinic/crm')}>
                       CRM
                     </Button>
                   </div>
                 </div>
+
+                {selectedHandoff && (
+                  <div className="border-b bg-muted/30 p-4 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium text-foreground">Resumo para atendimento</p>
+                      <span className="text-xs text-muted-foreground">Na fila {relativeDate(selectedHandoff.requested_at)}</span>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">{reasonLabel[selectedHandoff.reason] || 'Motivo operacional'}</p>
+                    {!!selectedHandoff.summary?.knownAdministrativeContext?.length && (
+                      <ul className="mt-2 list-inside list-disc text-muted-foreground">
+                        {selectedHandoff.summary.knownAdministrativeContext.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    )}
+                    {selectedHandoff.summary?.requestedDate && <p className="mt-1 text-muted-foreground">Data solicitada: {selectedHandoff.summary.requestedDate}</p>}
+                    {selectedHandoff.summary?.lastToolOutcome && <p className="mt-1 text-muted-foreground">Última tentativa da Aura: {selectedHandoff.summary.lastToolOutcome}</p>}
+                    {selectedConversation.control_mode === 'human_active' && isOwner && staff.filter((item) => item.user_id !== currentUser?.id).length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <select value={transferUserId} onChange={(event) => setTransferUserId(event.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm">
+                          <option value="">Transferir para...</option>
+                          {staff.filter((item) => item.user_id !== currentUser?.id).map((item) => <option key={item.user_id} value={item.user_id}>{item.label}</option>)}
+                        </select>
+                        <Button size="sm" variant="outline" disabled={!transferUserId || handoffAction.isPending} onClick={() => handoffAction.mutate({ action: 'transfer', targetUserId: transferUserId })}>Transferir</Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex-1 space-y-3 overflow-y-auto bg-secondary/20 p-4">
                   {messagesLoading ? (
@@ -290,7 +429,7 @@ export default function WhatsAppAiPage() {
                             <p className="whitespace-pre-wrap leading-relaxed">{message.body}</p>
                             <p className={cn('mt-2 text-[11px]', outbound ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
                               {relativeDate(message.created_at)}
-                              {message.ai_model ? ` • ${message.ai_model}` : ''}
+                              {message.message_origin === 'human' ? ' • Equipe' : message.message_origin === 'ai' ? ' • Aura' : ''}
                             </p>
                           </div>
                         </div>
@@ -298,6 +437,21 @@ export default function WhatsAppAiPage() {
                     })
                   )}
                 </div>
+
+                {selectedConversation.control_mode === 'human_active' && (
+                  <div className="border-t p-4">
+                    {isOwner ? (
+                      <div className="flex items-end gap-2">
+                        <Textarea value={humanMessage} onChange={(event) => setHumanMessage(event.target.value)} rows={2} maxLength={2000} placeholder="Responder como equipe da clínica" />
+                        <Button size="icon" onClick={() => sendHumanMessage.mutate()} disabled={!humanMessage.trim() || sendHumanMessage.isPending} aria-label="Enviar mensagem humana">
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Esta conversa está sob responsabilidade de outro membro da equipe.</p>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </CardContent>

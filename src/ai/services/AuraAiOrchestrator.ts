@@ -13,6 +13,9 @@ import type { AiToolCoordinator } from '../tools/AuraToolCoordinator.ts';
 import { AuraAiResponseValidator } from '../safety/AuraAiResponseValidator.ts';
 import { AI_SAFE_TEMPLATES } from '../safety/templates.ts';
 import { NoopAiSafetyAuditRecorder, type AiSafetyAuditRecorder, type AiSafetyValidationResult } from '../safety/domain.ts';
+import type { AuraHandoffService } from '../handoff/AuraHandoffService.ts';
+import { handoffPolicyForConversation, handoffPolicyForSafety } from '../handoff/policies.ts';
+import type { AiHandoffFeatureConfig, AiHandoffRecord } from '../handoff/domain.ts';
 
 export interface AiClinicConfigLoader {
   load(context: AiExecutionContext): Promise<AiClinicConfig>;
@@ -35,6 +38,7 @@ export class AuraAiOrchestrator {
     private readonly toolCoordinator?: AiToolCoordinator,
     private readonly responseValidator = new AuraAiResponseValidator(),
     private readonly safetyAudit: AiSafetyAuditRecorder = new NoopAiSafetyAuditRecorder(),
+    private readonly handoffService?: AuraHandoffService,
   ) {
     this.now = options.now ?? (() => new Date());
   }
@@ -45,6 +49,7 @@ export class AuraAiOrchestrator {
     const config = await this.clinicConfigLoader.load(context);
     if (config.clinicId !== context.clinicId) throw new AiValidationError('Clinic configuration crossed the tenant boundary.');
     if (!config.enabled) throw new AiValidationError('Aura AI is disabled for this clinic.');
+    await this.handoffService?.assertAiActive(context);
     const inputDecision = this.responseValidator.inspectInput(message.normalizedText);
     if (inputDecision) {
       const result: AiSafetyValidationResult = {
@@ -54,7 +59,11 @@ export class AuraAiOrchestrator {
         safeResponse: inputDecision.safeResponse, latencyMs: 0,
       };
       await this.recordSafety(context, result);
-      return this.preflightResponse(result);
+      const preflightPolicy = handoffPolicyForSafety(result.disposition, result.violations.map((item) => item.category));
+      const handoff = await this.requestHandoff(context, config.handoff, preflightPolicy ? {
+        ...preflightPolicy, violations: result.violations.map((item) => item.category),
+      } : null);
+      return this.preflightResponse(result, handoff);
     }
     const conversation = await this.conversationEngine.process(context, message, config, this.buildClinicContext(config));
     const toolResponse = await this.toolCoordinator?.executeIfPlanned(context, conversation, config, message.normalizedText);
@@ -72,6 +81,20 @@ export class AuraAiOrchestrator {
       };
     }
     await this.recordSafety(context, validation);
+    const safetySignal = handoffPolicyForSafety(validation.disposition, validation.violations.map((item) => item.category));
+    const conversationSignal = handoffPolicyForConversation(conversation.intent, conversation.requiresHandoff);
+    const handoff = await this.requestHandoff(context, config.handoff, safetySignal
+      ? { ...safetySignal, violations: validation.violations.map((item) => item.category), conversation, toolResult: toolResponse?.result }
+      : conversationSignal ? { ...conversationSignal, conversation, toolResult: toolResponse?.result } : null);
+    if (!handoff && this.handoffService && config.handoff) {
+      if (validation.requiresClarification || conversation.clarification) {
+        await this.safeOperationalFailure(context, config.handoff, 'repeated_ambiguity');
+      } else if (toolResponse?.result.outcome === 'error') {
+        await this.safeOperationalFailure(context, config.handoff, toolResponse.result.kind === 'mutation' ? 'mutation_failure' : 'provider_unavailable');
+      } else if (validation.disposition === 'allow' || validation.disposition === 'rewrite_safe') {
+        await this.handoffService.recordSuccess(context).catch(() => undefined);
+      }
+    }
     return {
       text: validation.safeResponse || AI_SAFE_TEMPLATES.technical,
       provider: toolResponse?.provider || conversation.provider,
@@ -85,10 +108,11 @@ export class AuraAiOrchestrator {
       readyForToolExecution: conversation.readyForToolExecution && !toolResponse,
       responseSafetyDisposition: validation.disposition,
       safetyViolationCategories: validation.violations.map((item) => item.category),
+      handoffOperational: Boolean(handoff), handoffId: handoff?.id,
     };
   }
 
-  private preflightResponse(validation: AiSafetyValidationResult): AiResponse {
+  private preflightResponse(validation: AiSafetyValidationResult, handoff?: AiHandoffRecord | null): AiResponse {
     return {
       text: validation.safeResponse || AI_SAFE_TEMPLATES.technical, provider: 'aura_safety', model: 'deterministic-v1',
       usage: {}, latencyMs: validation.latencyMs,
@@ -96,7 +120,25 @@ export class AuraAiOrchestrator {
       requiresClarification: validation.requiresClarification, requiresHandoff: validation.requiresHandoff,
       responseSafetyDisposition: validation.disposition,
       safetyViolationCategories: validation.violations.map((item) => item.category),
+      handoffOperational: Boolean(handoff), handoffId: handoff?.id,
     };
+  }
+
+  private async requestHandoff(
+    context: AiExecutionContext,
+    config: AiHandoffFeatureConfig | undefined,
+    signal: Parameters<AuraHandoffService['requestAutomatic']>[2] | null,
+  ) {
+    if (!this.handoffService || !config || !signal) return null;
+    try { return await this.handoffService.requestAutomatic(context, config, signal); } catch { return null; }
+  }
+
+  private async safeOperationalFailure(
+    context: AiExecutionContext,
+    config: AiHandoffFeatureConfig,
+    reason: Parameters<AuraHandoffService['recordOperationalFailure']>[2],
+  ) {
+    try { return await this.handoffService?.recordOperationalFailure(context, config, reason); } catch { return null; }
   }
 
   private async recordSafety(context: AiExecutionContext, result: AiSafetyValidationResult) {

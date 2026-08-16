@@ -111,6 +111,10 @@ export interface AiToolMutationGuard {
   claim(context: AiExecutionContext, tool: AiToolRequest): Promise<boolean>;
 }
 
+export interface AiConversationControlGuard {
+  canExecute(context: AiExecutionContext): Promise<boolean>;
+}
+
 export class NoopAiToolAuditRecorder implements AiToolAuditRecorder {
   async record(): Promise<void> {}
 }

@@ -109,6 +109,8 @@ export interface AiResponse {
   readyForToolExecution?: boolean;
   responseSafetyDisposition?: import('../safety/domain.ts').AiResponseSafetyDisposition;
   safetyViolationCategories?: readonly import('../safety/domain.ts').AiSafetyViolationCategory[];
+  handoffOperational?: boolean;
+  handoffId?: string;
 }
 
 export interface AiConversationMessage {
@@ -127,4 +129,5 @@ export interface AiClinicConfig {
   timezone?: string;
   administrativeContext?: readonly string[];
   toolExecution?: import('../tools/domain.ts').AiToolExecutionConfig;
+  handoff?: import('../handoff/domain.ts').AiHandoffFeatureConfig;
 }

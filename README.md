@@ -94,6 +94,8 @@ A Fase 5.6E adiciona uma barreira obrigatória e determinística depois do draft
 
 A Fase 5.6F cria o framework versionado de avaliação do Aura. O dataset v1 usa apenas dados sintéticos, possui suites fast/full, critical scenarios, assertions estruturadas, métricas, quality gates, baseline e relatórios JSON sem PHI. A suíte determinística roda sem OpenAI; o modo com modelo real é separado e gated. Use `npm run eval:ai:fast` durante o desenvolvimento e `npm run eval:ai` para a avaliação completa. Veja [`docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md`](docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md).
 
+A Fase 5.6G transforma os sinais de handoff em fluxo operacional: fila por clínica, motivo e prioridade administrativa, resumo sanitizado, takeover atômico, ownership exclusivo, envio humano pelo WhatsApp, transferência, devolução opcional para IA e trilha de auditoria sem conteúdo. Enquanto a conversa está em handoff ou atendimento humano, a IA e suas tools ficam suspensas. O gate automático nasce desligado e nenhuma clínica é ativada sem homologação. Veja [`docs/FASE_5_6G_HUMAN_HANDOFF_CONVERSATION_ESCALATION.md`](docs/FASE_5_6G_HUMAN_HANDOFF_CONVERSATION_ESCALATION.md).
+
 ## Módulos MVP desativados
 
 O repositório contém código de um MVP anterior para os módulos abaixo, mas eles estão **deliberadamente desativados no produto atual**:

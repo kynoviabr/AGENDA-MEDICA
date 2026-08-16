@@ -28,6 +28,10 @@ import {
   SupabaseAiToolMutationGuard,
   SupabaseAiKnowledgeAuditRecorder,
   SupabaseAiSafetyAuditRecorder,
+  SupabaseAiHandoffRepository,
+  SupabaseAiConversationControlGuard,
+  AuraHandoffService,
+  canReleaseAiOutbound,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -311,6 +315,7 @@ function createAuraBridge(
   const aiClient = admin as unknown as AiSupabaseClientLike;
   const usageRecorder = new SupabaseAiUsageRecorder(aiClient);
   const stateRepository = new SupabaseAiConversationStateRepository(aiClient);
+  const handoffRepository = new SupabaseAiHandoffRepository(aiClient);
   const conversationModel = modelOverride || Deno.env.get("OPENAI_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.llmModel;
   const conversationEngine = new AuraConversationEngine(
     new OpenAiConversationInterpreter({ apiKey }, conversationModel),
@@ -350,6 +355,8 @@ function createAuraBridge(
     stateRepository,
     usageRecorder,
     { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
+    () => new Date(),
+    new SupabaseAiConversationControlGuard(handoffRepository),
   );
   const orchestrator = new AuraAiOrchestrator(
     conversationEngine,
@@ -359,6 +366,7 @@ function createAuraBridge(
     toolCoordinator,
     undefined,
     new SupabaseAiSafetyAuditRecorder(aiClient),
+    new AuraHandoffService(handoffRepository),
   );
   return new WhatsappAuraAiBridge(ingestion, orchestrator, usageRecorder);
 }
@@ -505,6 +513,11 @@ serve(async (req) => {
         last_inbound_at: new Date().toISOString(),
         last_message_at: new Date().toISOString(),
         metadata: { provider: "meta_cloud_api" },
+        ...(currentConversation?.control_mode === "closed" ? {
+          control_mode: "ai_active", status: "open", ai_enabled: true,
+          active_handoff_id: null, assigned_user_id: null, ai_failure_count: 0,
+          control_revision: Number(currentConversation.control_revision || 0) + 1,
+        } : {}),
       };
 
       const { data: conversation, error: conversationError } = currentConversation
@@ -526,6 +539,16 @@ serve(async (req) => {
 
       if (conversationError) throw conversationError;
 
+      if (currentConversation?.control_mode === "closed") {
+        const { data: lastHandoff } = await admin.from("ai_conversation_handoffs")
+          .select("id,reason").eq("clinic_id", clinicId).eq("conversation_id", conversation.id)
+          .eq("status", "resolved").order("resolved_at", { ascending: false }).limit(1).maybeSingle();
+        if (lastHandoff) await admin.from("ai_handoff_events").insert({
+          clinic_id: clinicId, conversation_id: conversation.id, handoff_id: lastHandoff.id,
+          action: "reopened", actor_user_id: null, reason: "new_patient_inbound",
+        });
+      }
+
       const { error: inboundInsertError } = await admin.from("whatsapp_ai_messages").insert({
         clinic_id: clinicId,
         conversation_id: conversation.id,
@@ -535,16 +558,17 @@ serve(async (req) => {
         body: inbound.text || `[${inbound.messageType}]`,
         provider_message_id: inbound.messageId,
         raw_payload: { provider: "meta_cloud_api", message_type: inbound.messageType },
+        message_origin: "patient",
       });
       if (inboundInsertError) throw inboundInsertError;
 
-      if (settings?.is_enabled === false || !conversation.ai_enabled || conversation.status !== "open") {
+      if (settings?.is_enabled === false || !conversation.ai_enabled || conversation.status !== "open" || conversation.control_mode !== "ai_active") {
         processed.push({
           messageId: inbound.messageId,
           leadId: lead.id,
           conversationId: conversation.id,
           status: "stored_without_reply",
-          reason: settings?.is_enabled === false ? "clinic_ai_disabled" : conversation.ai_enabled ? conversation.status : "ai_disabled",
+          reason: settings?.is_enabled === false ? "clinic_ai_disabled" : conversation.control_mode !== "ai_active" ? conversation.control_mode : conversation.ai_enabled ? conversation.status : "ai_disabled",
         });
         continue;
       }
@@ -575,6 +599,13 @@ serve(async (req) => {
           const errorCode = typeof error === "object" && error && "code" in error
             ? String((error as { code: unknown }).code)
             : "AI_PROCESSING_FAILED";
+          if (errorCode === "AI_CONVERSATION_SUSPENDED") {
+            processed.push({
+              messageId: inbound.messageId, leadId: lead.id, conversationId: conversation.id,
+              status: "stored_without_reply", reason: "conversation_control_suspended",
+            });
+            continue;
+          }
           console.error("aura_ai_processing_failed", {
             correlationId, clinicId, conversationId: conversation.id,
             messageType: inbound.messageType, errorCode,
@@ -620,6 +651,20 @@ serve(async (req) => {
         continue;
       }
 
+      const { data: outboundFence } = await admin.from("whatsapp_ai_conversations")
+        .select("control_mode,active_handoff_id")
+        .eq("clinic_id", clinicId).eq("id", conversation.id).maybeSingle();
+      if (!canReleaseAiOutbound({
+        mode: outboundFence?.control_mode || "closed",
+        activeHandoffId: outboundFence?.active_handoff_id,
+      }, aiReply)) {
+        processed.push({
+          messageId: inbound.messageId, leadId: lead.id, conversationId: conversation.id,
+          status: "stored_without_reply", reason: "ai_outbound_fence_blocked",
+        });
+        continue;
+      }
+
       const whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
       const outboundMessageId = whatsappResponse?.messages?.[0]?.id ? String(whatsappResponse.messages[0].id) : null;
       const usage = aiReply.usage as Record<string, number | undefined>;
@@ -634,6 +679,7 @@ serve(async (req) => {
         provider_message_id: outboundMessageId,
         raw_payload: { provider: "meta_cloud_api", message_type: "text" },
         ai_model: aiReply.model,
+        message_origin: "ai",
         prompt_tokens: usage.inputTokens || usage.input_tokens || usage.prompt_tokens || null,
         completion_tokens: usage.outputTokens || usage.output_tokens || usage.completion_tokens || null,
         total_tokens: usage.totalTokens || usage.total_tokens || null,

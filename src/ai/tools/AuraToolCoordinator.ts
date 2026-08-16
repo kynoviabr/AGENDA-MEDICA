@@ -3,7 +3,7 @@ import type { AiClinicConfig, AiExecutionContext } from '../domain/models.ts';
 import type { AiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { NoopAiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { executeAiProviderCall, type AiProviderExecutionPolicy } from '../services/providerExecution.ts';
-import type { AiToolExecutor, AiToolPlanner, AiToolResult } from './domain.ts';
+import type { AiConversationControlGuard, AiToolExecutor, AiToolPlanner, AiToolResult } from './domain.ts';
 
 export interface AiCoordinatedToolResponse {
   text: string;
@@ -32,13 +32,16 @@ export class AuraToolCoordinator implements AiToolCoordinator {
     private readonly usageRecorder: AiUsageRecorder = new NoopAiUsageRecorder(),
     private readonly executionPolicy: AiProviderExecutionPolicy = { timeoutMs: 20_000, maxAttempts: 2 },
     private readonly now: () => Date = () => new Date(),
+    private readonly controlGuard?: AiConversationControlGuard,
   ) {}
 
   async executeIfPlanned(context: AiExecutionContext, conversation: AiConversationResult, config: AiClinicConfig, messageText = '') {
     if (conversation.clarification || conversation.requiresHandoff
       || (conversation.safetyDisposition === 'clinical_content_restricted' && !hasAdministrativeContinuation(messageText))) return null;
+    if (this.controlGuard && !await this.controlGuard.canExecute(context)) return null;
     const tool = this.planner.plan({ context, intent: conversation.intent, state: conversation.state, messageText });
     if (!tool) return null;
+    if (this.controlGuard && !await this.controlGuard.canExecute(context)) return null;
     const result = await this.executor.execute({
       context, conversationState: conversation.state,
       config: config.toolExecution || { readEnabled: false, mutationsEnabled: false }, tool,

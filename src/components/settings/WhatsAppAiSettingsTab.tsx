@@ -17,6 +17,9 @@ type WhatsAppAiSettings = {
   openai_model: string;
   handoff_message: string;
   default_goal: string;
+  ai_engine_mode: 'legacy' | 'shadow' | 'active';
+  ai_handoff_enabled: boolean;
+  ai_handoff_validated_at: string | null;
 };
 
 type WhatsAppConnection = {
@@ -46,6 +49,9 @@ const defaultSettings = (clinicId: string): WhatsAppAiSettings => ({
   openai_model: 'gpt-5.6-luna',
   handoff_message: 'Vou chamar uma pessoa da equipe para te ajudar melhor.',
   default_goal: 'Conduzir leads para uma avaliação humana.',
+  ai_engine_mode: 'legacy',
+  ai_handoff_enabled: false,
+  ai_handoff_validated_at: null,
 });
 
 async function loadMetaSdk() {
@@ -79,7 +85,7 @@ export default function WhatsAppAiSettingsTab() {
     queryKey: ['whatsapp-ai-settings', clinicId],
     queryFn: async () => {
       const { data, error } = await supabase.from('whatsapp_ai_settings' as never)
-        .select('clinic_id, openai_model, handoff_message, default_goal').eq('clinic_id', clinicId!).maybeSingle();
+        .select('clinic_id, openai_model, handoff_message, default_goal, ai_engine_mode, ai_handoff_enabled, ai_handoff_validated_at').eq('clinic_id', clinicId!).maybeSingle();
       if (error) throw error;
       return (data as WhatsAppAiSettings | null) || defaultSettings(clinicId!);
     },
@@ -208,6 +214,15 @@ export default function WhatsAppAiSettingsTab() {
           </div>
 
           <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 text-primary" /><p>App Meta, webhook e inteligência artificial são administrados pela plataforma. Cada clínica apenas autoriza o próprio número, e os tokens ficam criptografados no servidor.</p></div>
+          <div className="flex flex-col gap-2 rounded-lg border p-4 text-sm md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-medium text-foreground">Transferência operacional para equipe</p>
+              <p className="text-muted-foreground">A fila automática só é liberada após homologação da clínica. Takeover manual continua disponível para usuários autorizados.</p>
+            </div>
+            <Badge variant={form.ai_handoff_enabled && form.ai_handoff_validated_at && form.ai_engine_mode === 'active' ? 'default' : 'secondary'}>
+              {form.ai_handoff_enabled && form.ai_handoff_validated_at && form.ai_engine_mode === 'active' ? 'Automação homologada' : 'Automação não habilitada'}
+            </Badge>
+          </div>
           <Button onClick={() => saveMutation.mutate()} disabled={!canManage || saveMutation.isPending}><Bot className="mr-2 h-4 w-4" />{saveMutation.isPending ? 'Salvando...' : 'Salvar comportamento da IA'}</Button>
         </CardContent>
       </Card>

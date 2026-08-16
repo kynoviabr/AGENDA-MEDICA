@@ -69,4 +69,16 @@ describe('AuraToolCoordinator', () => {
     await new AuraToolCoordinator(new ConversationStateToolPlanner(), executor, composer, repository).executeIfPlanned(context, current, config);
     expect(repository.snapshot().state.activeIntentStatus).toBe('completed');
   });
+
+  it('stops before tool execution when a human takeover changes conversation control', async () => {
+    const executor: AiToolExecutor = { execute: vi.fn() };
+    const composer: AiToolResponseComposer = { compose: vi.fn() };
+    const controlGuard = { canExecute: vi.fn(async () => false) };
+    const coordinator = new AuraToolCoordinator(
+      new ConversationStateToolPlanner(), executor, composer, new InMemoryAiConversationStateRepository(),
+      undefined, undefined, undefined, controlGuard,
+    );
+    await expect(coordinator.executeIfPlanned(context, conversation(), config)).resolves.toBeNull();
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
 });

@@ -74,6 +74,15 @@ export interface AiEvaluationProviderOutput {
   latency?: Partial<AiEvaluationLatency>;
   errorCode?: string;
   tenantLeak?: boolean;
+  handoff?: {
+    activeCount: number;
+    controlMode: 'ai_active' | 'handoff_pending' | 'human_active' | 'closed';
+    priority?: 'normal' | 'high' | 'urgent';
+    owner?: string;
+    aiOutboundCount?: number;
+    inboundPersisted?: boolean;
+    pendingMutationInvalidated?: boolean;
+  };
 }
 
 export interface AiEvaluationTurn {
@@ -120,6 +129,7 @@ export interface AiEvaluationTurnCapture {
   requiresClarification: boolean;
   requiresHandoff: boolean;
   tenantLeak: boolean;
+  handoff?: AiEvaluationProviderOutput['handoff'];
   errorCode?: string;
   latency: AiEvaluationLatency;
 }

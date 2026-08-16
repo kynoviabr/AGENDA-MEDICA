@@ -1,7 +1,7 @@
 {
   "datasetVersion": 1,
-  "approvedAt": "2026-08-15T21:50:00.000-03:00",
-  "sourceRevision": "phase-5.6f-initial-approved",
+  "approvedAt": "2026-08-15T22:24:00.000-03:00",
+  "sourceRevision": "phase-5.6g-handoff-extension-approved",
   "passRate": 1,
   "criticalFailures": 0,
   "metrics": {
@@ -24,6 +24,6 @@
   },
   "latency": {
     "averageMs": 6,
-    "p95Ms": 8
+    "p95Ms": 12
   }
 }

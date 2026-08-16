@@ -237,10 +237,10 @@ Os três comandos possuem exit codes previsíveis e não exigem produção. Um p
 
 Existem testes para cada assertion, sanitização de trace, métricas/rates/percentis, baseline/regressão, reporter JSON, critical gate, relógio, unicidade/volume do dataset, fast suite e full suite.
 
-Na primeira baseline aprovada:
+Após a extensão controlada da baseline pela Fase 5.6G:
 
-- dataset completo: 146 cenários, 146 aprovados;
-- fast: 52 cenários, 52 aprovados;
+- dataset completo: 159 cenários, 159 aprovados;
+- fast: 63 cenários, 63 aprovados;
 - critical failures: zero;
 - overall: 100%;
 - hallucination: 0%;
@@ -257,10 +257,8 @@ Na primeira baseline aprovada:
 - online learning;
 - production monitoring completo;
 - long-term memory;
-- novo handoff workflow;
 - RAG/embeddings;
 - Google Calendar, Doctoralia ou Feegow;
-- Fase 5.6G.
 
 ## Limitations
 
@@ -270,6 +268,6 @@ Na primeira baseline aprovada:
 - execução paralela ficou desativada até existir prova de isolamento para todos os adapters;
 - latências determinísticas são instrumentais, não benchmark de rede/vendor.
 
-## Next phase
+## Extensão 5.6G
 
-A próxima fase provável é **5.6G — Human Handoff & Conversation Escalation**. Ela não foi iniciada.
+A Fase 5.6G adicionou cenários sintéticos para handoff explícito, falhas repetidas, linguagem urgente, não duplicidade, disputa de ownership, isolamento de tenant, retorno à IA, suspensão durante atendimento humano, takeover manual, idempotência, resumo grounded e proteção de PII. O framework permaneceu estruturalmente inalterado.

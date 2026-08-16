@@ -275,6 +275,142 @@ export type Database = {
           },
         ]
       }
+      ai_conversation_handoffs: {
+        Row: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          assigned_at?: string | null
+          assigned_user_id?: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          priority?: string
+          reason: string
+          requested_at?: string
+          requested_by?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          sanitized_description?: string | null
+          source: string
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          assigned_at?: string | null
+          assigned_user_id?: string | null
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          priority?: string
+          reason?: string
+          requested_at?: string
+          requested_by?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          sanitized_description?: string | null
+          source?: string
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversation_handoffs_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversation_handoffs_conversation_tenant_fk"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      ai_handoff_events: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          handoff_id: string
+          id: string
+          occurred_at: string
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          clinic_id: string
+          conversation_id: string
+          handoff_id: string
+          id?: string
+          occurred_at?: string
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          clinic_id?: string
+          conversation_id?: string
+          handoff_id?: string
+          id?: string
+          occurred_at?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_handoff_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_handoff_events_conversation_tenant_fk"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "ai_handoff_events_handoff_tenant_fk"
+            columns: ["handoff_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversation_handoffs"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
       ai_knowledge_answer_events: {
         Row: {
           clinic_id: string
@@ -4874,9 +5010,14 @@ export type Database = {
       }
       whatsapp_ai_conversations: {
         Row: {
+          active_handoff_id: string | null
           ai_enabled: boolean
+          ai_failure_count: number
+          assigned_user_id: string | null
           clinic_id: string
           contact_name: string | null
+          control_mode: string
+          control_revision: number
           conversation_state: Json
           created_at: string
           id: string
@@ -4892,9 +5033,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active_handoff_id?: string | null
           ai_enabled?: boolean
+          ai_failure_count?: number
+          assigned_user_id?: string | null
           clinic_id: string
           contact_name?: string | null
+          control_mode?: string
+          control_revision?: number
           conversation_state?: Json
           created_at?: string
           id?: string
@@ -4910,9 +5056,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active_handoff_id?: string | null
           ai_enabled?: boolean
+          ai_failure_count?: number
+          assigned_user_id?: string | null
           clinic_id?: string
           contact_name?: string | null
+          control_mode?: string
+          control_revision?: number
           conversation_state?: Json
           created_at?: string
           id?: string
@@ -4928,6 +5079,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_ai_conversations_active_handoff_tenant_fk"
+            columns: ["active_handoff_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversation_handoffs"
+            referencedColumns: ["id", "clinic_id"]
+          },
           {
             foreignKeyName: "whatsapp_ai_conversations_clinic_id_fkey"
             columns: ["clinic_id"]
@@ -4946,6 +5104,7 @@ export type Database = {
       }
       whatsapp_ai_messages: {
         Row: {
+          actor_user_id: string | null
           ai_model: string | null
           body: string
           clinic_id: string
@@ -4955,6 +5114,7 @@ export type Database = {
           direction: string
           id: string
           lead_id: string | null
+          message_origin: string
           prompt_tokens: number | null
           provider_message_id: string | null
           provider_status: string | null
@@ -4963,6 +5123,7 @@ export type Database = {
           total_tokens: number | null
         }
         Insert: {
+          actor_user_id?: string | null
           ai_model?: string | null
           body: string
           clinic_id: string
@@ -4972,6 +5133,7 @@ export type Database = {
           direction: string
           id?: string
           lead_id?: string | null
+          message_origin?: string
           prompt_tokens?: number | null
           provider_message_id?: string | null
           provider_status?: string | null
@@ -4980,6 +5142,7 @@ export type Database = {
           total_tokens?: number | null
         }
         Update: {
+          actor_user_id?: string | null
           ai_model?: string | null
           body?: string
           clinic_id?: string
@@ -4989,6 +5152,7 @@ export type Database = {
           direction?: string
           id?: string
           lead_id?: string | null
+          message_origin?: string
           prompt_tokens?: number | null
           provider_message_id?: string | null
           provider_status?: string | null
@@ -5023,6 +5187,8 @@ export type Database = {
       whatsapp_ai_settings: {
         Row: {
           ai_engine_mode: string
+          ai_handoff_enabled: boolean
+          ai_handoff_validated_at: string | null
           ai_knowledge_enabled: boolean
           ai_knowledge_validated_at: string | null
           ai_mutation_tools_enabled: boolean
@@ -5048,6 +5214,8 @@ export type Database = {
         }
         Insert: {
           ai_engine_mode?: string
+          ai_handoff_enabled?: boolean
+          ai_handoff_validated_at?: string | null
           ai_knowledge_enabled?: boolean
           ai_knowledge_validated_at?: string | null
           ai_mutation_tools_enabled?: boolean
@@ -5073,6 +5241,8 @@ export type Database = {
         }
         Update: {
           ai_engine_mode?: string
+          ai_handoff_enabled?: boolean
+          ai_handoff_validated_at?: string | null
           ai_knowledge_enabled?: boolean
           ai_knowledge_validated_at?: string | null
           ai_mutation_tools_enabled?: boolean
@@ -5347,6 +5517,10 @@ export type Database = {
       auth_clinic_id: { Args: never; Returns: string }
       auth_patient_id: { Args: never; Returns: string }
       auth_user_role: { Args: never; Returns: string }
+      authorize_human_conversation_outbound: {
+        Args: { p_clinic_id: string; p_conversation_id: string }
+        Returns: boolean
+      }
       backfill_contract_financial_forecast: {
         Args: { p_clinic_id: string; p_force?: boolean }
         Returns: Json
@@ -5863,6 +6037,14 @@ export type Database = {
         Args: { _clinic_id: string; _user_id: string }
         Returns: boolean
       }
+      list_ai_handoff_staff: {
+        Args: { p_clinic_id: string }
+        Returns: {
+          label: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }[]
+      }
       normalize_payment_method: { Args: { _value: string }; Returns: string }
       parse_brl_amount: { Args: { _value: string }; Returns: number }
       reassign_appointment_professional_secure: {
@@ -5932,7 +6114,82 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_ai_conversation_failure: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_correlation_id: string
+          p_reason: string
+          p_threshold?: number
+        }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       renewal_tasks_daily_maintenance: { Args: never; Returns: undefined }
+      request_ai_conversation_handoff: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_correlation_id: string
+          p_description?: string
+          p_priority: string
+          p_reason: string
+          p_source: string
+          p_summary?: Json
+        }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reschedule_appointment_secure: {
         Args: {
           p_appointment_id: string
@@ -6005,6 +6262,44 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      reset_ai_conversation_failures: {
+        Args: { p_clinic_id: string; p_conversation_id: string }
+        Returns: undefined
+      }
+      resolve_ai_conversation_handoff: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_resolution: string
+        }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       resolve_appointment_duration:
         | {
             Args: {
@@ -6024,6 +6319,70 @@ export type Database = {
             }
             Returns: number
           }
+      take_over_ai_conversation: {
+        Args: { p_clinic_id: string; p_conversation_id: string }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      transfer_ai_conversation: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_target_user_id: string
+        }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       transition_appointment_status_secure: {
         Args: {
           p_appointment_id: string
@@ -6087,6 +6446,36 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "appointments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      unassign_ai_conversation: {
+        Args: { p_clinic_id: string; p_conversation_id: string }
+        Returns: {
+          accepted_at: string | null
+          assigned_at: string | null
+          assigned_user_id: string | null
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string | null
+          created_at: string
+          id: string
+          priority: string
+          reason: string
+          requested_at: string
+          requested_by: string | null
+          resolution: string | null
+          resolved_at: string | null
+          sanitized_description: string | null
+          source: string
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_conversation_handoffs"
           isOneToOne: true
           isSetofReturn: false
         }
