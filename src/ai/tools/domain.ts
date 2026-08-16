@@ -13,7 +13,8 @@ export type AiReadToolName =
   | 'list_services'
   | 'list_insurances'
   | 'get_available_slots'
-  | 'find_patient_appointments';
+  | 'find_patient_appointments'
+  | 'search_administrative_knowledge';
 
 export type AiMutationToolName =
   | 'create_appointment'
@@ -35,6 +36,8 @@ export interface AiToolExecutionConfig {
   engineMode?: 'legacy' | 'shadow' | 'active';
   readEnabled: boolean;
   readValidatedAt?: string;
+  knowledgeEnabled?: boolean;
+  knowledgeValidatedAt?: string;
   mutationsEnabled: boolean;
 }
 
@@ -42,6 +45,7 @@ export interface AiToolPlanningRequest {
   context: AiExecutionContext;
   intent: AiConversationIntent;
   state: AiConversationState;
+  messageText: string;
 }
 
 export interface AiToolPlanner {

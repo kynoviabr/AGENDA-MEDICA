@@ -123,6 +123,111 @@ export type Database = {
           },
         ]
       }
+      administrative_knowledge_entries: {
+        Row: {
+          answer: string
+          clinic_id: string
+          created_at: string
+          id: string
+          insurance_id: string | null
+          keywords: string[]
+          location_id: string | null
+          priority: number
+          professional_id: string | null
+          question: string
+          revision: number
+          scope: string
+          service_id: string | null
+          status: string
+          topic: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          answer: string
+          clinic_id: string
+          created_at?: string
+          id?: string
+          insurance_id?: string | null
+          keywords?: string[]
+          location_id?: string | null
+          priority?: number
+          professional_id?: string | null
+          question: string
+          revision?: number
+          scope?: string
+          service_id?: string | null
+          status?: string
+          topic: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          answer?: string
+          clinic_id?: string
+          created_at?: string
+          id?: string
+          insurance_id?: string | null
+          keywords?: string[]
+          location_id?: string | null
+          priority?: number
+          professional_id?: string | null
+          question?: string
+          revision?: number
+          scope?: string
+          service_id?: string | null
+          status?: string
+          topic?: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "administrative_knowledge_entries_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "administrative_knowledge_entries_insurance_clinic_fkey"
+            columns: ["insurance_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "health_insurances"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "administrative_knowledge_entries_location_clinic_fkey"
+            columns: ["location_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinic_locations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "administrative_knowledge_entries_professional_clinic_fkey"
+            columns: ["professional_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id", "clinic_id"]
+          },
+          {
+            foreignKeyName: "administrative_knowledge_entries_service_clinic_fkey"
+            columns: ["service_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "treatments"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
       agenda_job_executions: {
         Row: {
           clinic_id: string | null
@@ -164,6 +269,156 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clinics"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_knowledge_answer_events: {
+        Row: {
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at: string
+          id: string
+          latency_ms: number
+          occurred_at: string
+          outcome: string
+          source_refs: Json
+          topic: string
+        }
+        Insert: {
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at?: string
+          id?: string
+          latency_ms: number
+          occurred_at?: string
+          outcome: string
+          source_refs?: Json
+          topic: string
+        }
+        Update: {
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string
+          created_at?: string
+          id?: string
+          latency_ms?: number
+          occurred_at?: string
+          outcome?: string
+          source_refs?: Json
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_knowledge_answer_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_knowledge_answer_events_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      ai_tool_execution_events: {
+        Row: {
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at: string
+          error_code: string | null
+          id: string
+          latency_ms: number
+          occurred_at: string
+          outcome: string
+          tool_kind: string
+          tool_name: string
+        }
+        Insert: {
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          latency_ms: number
+          occurred_at?: string
+          outcome: string
+          tool_kind: string
+          tool_name: string
+        }
+        Update: {
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          latency_ms?: number
+          occurred_at?: string
+          outcome?: string
+          tool_kind?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_execution_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_tool_execution_events_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      ai_tool_mutation_claims: {
+        Row: {
+          claimed_at: string
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          tool_name: string
+        }
+        Insert: {
+          claimed_at?: string
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          tool_name: string
+        }
+        Update: {
+          claimed_at?: string
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_mutation_claims_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_tool_mutation_claims_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
           },
         ]
       }
@@ -869,8 +1124,65 @@ export type Database = {
           },
         ]
       }
+      clinic_administrative_policies: {
+        Row: {
+          allowed_payment_methods: string[]
+          arrival_instructions: string | null
+          arrival_minutes: number | null
+          cancellation_policy: string | null
+          children_policy: string | null
+          clinic_id: string
+          companion_policy: string | null
+          created_at: string
+          first_consultation_information: string | null
+          id: string
+          late_policy: string | null
+          required_documents: string[]
+          updated_at: string
+        }
+        Insert: {
+          allowed_payment_methods?: string[]
+          arrival_instructions?: string | null
+          arrival_minutes?: number | null
+          cancellation_policy?: string | null
+          children_policy?: string | null
+          clinic_id: string
+          companion_policy?: string | null
+          created_at?: string
+          first_consultation_information?: string | null
+          id?: string
+          late_policy?: string | null
+          required_documents?: string[]
+          updated_at?: string
+        }
+        Update: {
+          allowed_payment_methods?: string[]
+          arrival_instructions?: string | null
+          arrival_minutes?: number | null
+          cancellation_policy?: string | null
+          children_policy?: string | null
+          clinic_id?: string
+          companion_policy?: string | null
+          created_at?: string
+          first_consultation_information?: string | null
+          id?: string
+          late_policy?: string | null
+          required_documents?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_administrative_policies_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: true
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clinic_locations: {
         Row: {
+          accessibility_information: string | null
           active: boolean
           address_line: string | null
           city: string | null
@@ -879,6 +1191,8 @@ export type Database = {
           id: string
           is_primary: boolean
           name: string
+          opening_hours: Json | null
+          parking_information: string | null
           phone: string | null
           state: string | null
           timezone: string
@@ -886,6 +1200,7 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
+          accessibility_information?: string | null
           active?: boolean
           address_line?: string | null
           city?: string | null
@@ -894,6 +1209,8 @@ export type Database = {
           id?: string
           is_primary?: boolean
           name: string
+          opening_hours?: Json | null
+          parking_information?: string | null
           phone?: string | null
           state?: string | null
           timezone?: string
@@ -901,6 +1218,7 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
+          accessibility_information?: string | null
           active?: boolean
           address_line?: string | null
           city?: string | null
@@ -909,6 +1227,8 @@ export type Database = {
           id?: string
           is_primary?: boolean
           name?: string
+          opening_hours?: Json | null
+          parking_information?: string | null
           phone?: string | null
           state?: string | null
           timezone?: string
@@ -4194,6 +4514,7 @@ export type Database = {
       }
       treatments: {
         Row: {
+          administrative_instructions: string | null
           can_be_scheduled_by_ai: boolean
           can_be_scheduled_online: boolean
           category: string | null
@@ -4209,6 +4530,7 @@ export type Database = {
           min_price: number | null
           name: string
           num_sessions: number
+          preparation_instructions: string | null
           price: number
           renewal_enabled: boolean
           renewal_trigger_days: number
@@ -4218,6 +4540,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          administrative_instructions?: string | null
           can_be_scheduled_by_ai?: boolean
           can_be_scheduled_online?: boolean
           category?: string | null
@@ -4233,6 +4556,7 @@ export type Database = {
           min_price?: number | null
           name: string
           num_sessions?: number
+          preparation_instructions?: string | null
           price?: number
           renewal_enabled?: boolean
           renewal_trigger_days?: number
@@ -4242,6 +4566,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          administrative_instructions?: string | null
           can_be_scheduled_by_ai?: boolean
           can_be_scheduled_online?: boolean
           category?: string | null
@@ -4257,6 +4582,7 @@ export type Database = {
           min_price?: number | null
           name?: string
           num_sessions?: number
+          preparation_instructions?: string | null
           price?: number
           renewal_enabled?: boolean
           renewal_trigger_days?: number
@@ -4637,6 +4963,11 @@ export type Database = {
       whatsapp_ai_settings: {
         Row: {
           ai_engine_mode: string
+          ai_knowledge_enabled: boolean
+          ai_knowledge_validated_at: string | null
+          ai_mutation_tools_enabled: boolean
+          ai_read_tools_enabled: boolean
+          ai_read_tools_validated_at: string | null
           clinic_id: string
           created_at: string
           default_goal: string
@@ -4657,6 +4988,11 @@ export type Database = {
         }
         Insert: {
           ai_engine_mode?: string
+          ai_knowledge_enabled?: boolean
+          ai_knowledge_validated_at?: string | null
+          ai_mutation_tools_enabled?: boolean
+          ai_read_tools_enabled?: boolean
+          ai_read_tools_validated_at?: string | null
           clinic_id: string
           created_at?: string
           default_goal?: string
@@ -4677,6 +5013,11 @@ export type Database = {
         }
         Update: {
           ai_engine_mode?: string
+          ai_knowledge_enabled?: boolean
+          ai_knowledge_validated_at?: string | null
+          ai_mutation_tools_enabled?: boolean
+          ai_read_tools_enabled?: boolean
+          ai_read_tools_validated_at?: string | null
           clinic_id?: string
           created_at?: string
           default_goal?: string
@@ -5078,6 +5419,15 @@ export type Database = {
               isSetofReturn: false
             }
           }
+      claim_ai_tool_mutation: {
+        Args: {
+          p_clinic_id: string
+          p_conversation_id: string
+          p_correlation_id: string
+          p_tool_name: string
+        }
+        Returns: boolean
+      }
       confirm_appointment_secure: {
         Args: { p_appointment_id: string; p_clinic_id: string }
         Returns: {

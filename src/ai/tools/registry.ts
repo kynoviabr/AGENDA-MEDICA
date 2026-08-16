@@ -17,6 +17,7 @@ const definitions: readonly AiToolDefinition[] = [
   { name: 'list_insurances', kind: 'read', allowedIntents: ['insurance_question', 'scheduling_request'], allowedArguments: ['professionalName'], requiredArguments: [] },
   { name: 'get_available_slots', kind: 'read', allowedIntents: ['scheduling_request', 'reschedule_request'], allowedArguments: ['appointmentReference', 'locationName', 'professionalName', 'serviceName', 'insuranceName', 'billingType', 'dateFrom', 'dateTo'], requiredArguments: ['dateFrom', 'dateTo', 'billingType'] },
   { name: 'find_patient_appointments', kind: 'read', allowedIntents: ['confirmation_request', 'cancellation_request', 'reschedule_request'], allowedArguments: ['appointmentReference'], requiredArguments: [] },
+  { name: 'search_administrative_knowledge', kind: 'read', allowedIntents: ['administrative_question', 'location_question', 'professional_question', 'service_question', 'insurance_question'], allowedArguments: ['query', 'locationName', 'professionalName', 'serviceName', 'insuranceName'], requiredArguments: ['query'] },
   { name: 'create_appointment', kind: 'mutation', allowedIntents: ['scheduling_request'], allowedArguments: ['locationName', 'professionalName', 'serviceName', 'insuranceName', 'billingType', 'startAt'], requiredArguments: ['professionalName', 'billingType', 'startAt'] },
   { name: 'confirm_appointment', kind: 'mutation', allowedIntents: ['confirmation_request'], allowedArguments: ['appointmentReference'], requiredArguments: [] },
   { name: 'cancel_appointment', kind: 'mutation', allowedIntents: ['cancellation_request'], allowedArguments: ['appointmentReference', 'reason'], requiredArguments: [] },
@@ -56,6 +57,6 @@ export class AiToolRegistry {
 }
 
 function isSafeScalar(value: unknown): value is string | number | boolean {
-  if (typeof value === 'string') return value.trim().length > 0 && value.length <= 240;
+  if (typeof value === 'string') return value.trim().length > 0 && value.length <= 500;
   return typeof value === 'number' ? Number.isFinite(value) : typeof value === 'boolean';
 }

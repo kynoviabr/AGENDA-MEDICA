@@ -19,11 +19,14 @@ import {
   AuraAiOrchestrator,
   AuraConversationEngine,
   AuraSchedulingToolExecutor,
+  AdministrativeKnowledgeToolExecutor,
+  CompositeAiToolExecutor,
   AuraToolCoordinator,
   ConversationStateToolPlanner,
   OpenAiToolResponseComposer,
   SupabaseAiToolAuditRecorder,
   SupabaseAiToolMutationGuard,
+  SupabaseAiKnowledgeAuditRecorder,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -35,6 +38,8 @@ import {
 import { SchedulingService } from "../../../src/scheduling/services/SchedulingService.ts";
 import { InternalSchedulingProvider } from "../../../src/scheduling/providers/internal/InternalSchedulingProvider.ts";
 import { SupabaseInternalSchedulingDataSource } from "../../../src/scheduling/providers/internal/SupabaseInternalSchedulingDataSource.ts";
+import { AdministrativeKnowledgeService } from "../../../src/knowledge/services/AdministrativeKnowledgeService.ts";
+import { SupabaseAdministrativeKnowledgeRepository } from "../../../src/knowledge/repositories/SupabaseAdministrativeKnowledgeRepository.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -319,14 +324,26 @@ function createAuraBridge(
   const schedulingService = new SchedulingService(new InternalSchedulingProvider(
     new SupabaseInternalSchedulingDataSource(admin as never),
   ));
+  const toolAudit = new SupabaseAiToolAuditRecorder(aiClient);
+  const knowledgeService = new AdministrativeKnowledgeService(
+    new SupabaseAdministrativeKnowledgeRepository(admin as never),
+  );
   const toolCoordinator = new AuraToolCoordinator(
     new ConversationStateToolPlanner(),
-    new AuraSchedulingToolExecutor(
-      schedulingService,
-      undefined,
-      new SupabaseAiToolAuditRecorder(aiClient),
-      undefined,
-      new SupabaseAiToolMutationGuard(aiClient),
+    new CompositeAiToolExecutor(
+      new AuraSchedulingToolExecutor(
+        schedulingService,
+        undefined,
+        toolAudit,
+        undefined,
+        new SupabaseAiToolMutationGuard(aiClient),
+      ),
+      new AdministrativeKnowledgeToolExecutor(
+        knowledgeService,
+        undefined,
+        toolAudit,
+        new SupabaseAiKnowledgeAuditRecorder(aiClient),
+      ),
     ),
     new OpenAiToolResponseComposer({ apiKey }, conversationModel),
     stateRepository,

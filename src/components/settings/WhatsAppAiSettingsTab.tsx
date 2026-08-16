@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import AdministrativeKnowledgeSettings from './AdministrativeKnowledgeSettings';
 
 type WhatsAppAiSettings = {
   clinic_id: string;
@@ -210,6 +211,7 @@ export default function WhatsAppAiSettingsTab() {
           <Button onClick={() => saveMutation.mutate()} disabled={!canManage || saveMutation.isPending}><Bot className="mr-2 h-4 w-4" />{saveMutation.isPending ? 'Salvando...' : 'Salvar comportamento da IA'}</Button>
         </CardContent>
       </Card>
+      <AdministrativeKnowledgeSettings />
     </div>
   );
 }

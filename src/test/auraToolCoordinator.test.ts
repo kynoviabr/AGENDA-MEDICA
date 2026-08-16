@@ -36,7 +36,7 @@ describe('AuraToolCoordinator', () => {
     const repository = new InMemoryAiConversationStateRepository();
     const executor: AiToolExecutor = { execute: vi.fn(async () => ({
       schemaVersion: 1, toolName: 'get_available_slots', kind: 'read', outcome: 'success',
-      data: { professionalId: 'professional-secret', professional: { name: 'Dra. Ana' }, slots: [{ startAt: '2026-08-18T12:00:00.000Z' }] },
+      data: { professionalId: 'professional-secret', source: { recordId: 'knowledge-secret', table: 'clinic_locations' }, professional: { name: 'Dra. Ana' }, slots: [{ startAt: '2026-08-18T12:00:00.000Z' }] },
       presentedOptions: [{ id: 'slot-secret', value: '2026-08-18T12:00:00.000Z', label: 'ter., 18/08, 09:00', kind: 'time' }],
     })) };
     const composer: AiToolResponseComposer = { compose: vi.fn(async () => ({ text: 'Tenho 09:00 disponível. Você prefere esse horário?', provider: 'fake', model: 'fake', usage: {}, latencyMs: 1 })) };
@@ -45,6 +45,7 @@ describe('AuraToolCoordinator', () => {
     expect(result?.text).toContain('09:00');
     const modelInput = vi.mocked(composer.compose).mock.calls[0][0];
     expect(JSON.stringify(modelInput)).not.toContain('professional-secret');
+    expect(JSON.stringify(modelInput)).not.toContain('knowledge-secret');
     expect(JSON.stringify(modelInput)).not.toContain('slot-secret');
     expect(repository.snapshot().state.lastPresentedOptions[0].value).toBe('2026-08-18T12:00:00.000Z');
   });

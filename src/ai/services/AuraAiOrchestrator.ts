@@ -41,7 +41,7 @@ export class AuraAiOrchestrator {
     if (config.clinicId !== context.clinicId) throw new AiValidationError('Clinic configuration crossed the tenant boundary.');
     if (!config.enabled) throw new AiValidationError('Aura AI is disabled for this clinic.');
     const conversation = await this.conversationEngine.process(context, message, config, this.buildClinicContext(config));
-    const toolResponse = await this.toolCoordinator?.executeIfPlanned(context, conversation, config);
+    const toolResponse = await this.toolCoordinator?.executeIfPlanned(context, conversation, config, message.normalizedText);
     return {
       text: toolResponse?.text || conversation.responseText,
       provider: toolResponse?.provider || conversation.provider,

@@ -34,5 +34,7 @@ export * from './tools/errors.ts';
 export * from './tools/registry.ts';
 export * from './tools/ConversationStateToolPlanner.ts';
 export * from './tools/AuraSchedulingToolExecutor.ts';
+export * from './tools/AdministrativeKnowledgeToolExecutor.ts';
+export * from './tools/CompositeAiToolExecutor.ts';
 export * from './tools/AuraToolCoordinator.ts';
 export * from './tools/OpenAiToolResponseComposer.ts';

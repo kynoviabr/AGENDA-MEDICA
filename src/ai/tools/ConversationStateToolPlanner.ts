@@ -16,7 +16,7 @@ function request(name: AiToolRequest['name'], kind: AiToolRequest['kind'], inten
 }
 
 export class ConversationStateToolPlanner implements AiToolPlanner {
-  plan({ context, intent, state }: Parameters<AiToolPlanner['plan']>[0]): AiToolRequest | null {
+  plan({ context, intent, state, messageText = '' }: Parameters<AiToolPlanner['plan']>[0]): AiToolRequest | null {
     void context;
     const professionalName = value(state, 'professional');
     const serviceName = value(state, 'service');
@@ -27,8 +27,21 @@ export class ConversationStateToolPlanner implements AiToolPlanner {
     const billingType = state.entities.billingType?.value;
     const date = temporal(state);
 
-    if (intent === 'location_question') return request('list_locations', 'read', intent, {});
+    const knowledgeArgs = { query: messageText, locationName, professionalName, serviceName, insuranceName };
+    if (intent === 'administrative_question' || (intent === 'location_question' && isAdministrativeKnowledgeQuestion(messageText))) {
+      return request('search_administrative_knowledge', 'read', intent, knowledgeArgs);
+    }
+    if (intent === 'professional_question' && isAdministrativeKnowledgeQuestion(messageText)) {
+      return request('search_administrative_knowledge', 'read', intent, knowledgeArgs);
+    }
+    if (intent === 'service_question' && isAdministrativeKnowledgeQuestion(messageText)) {
+      return request('search_administrative_knowledge', 'read', intent, knowledgeArgs);
+    }
+    if (intent === 'insurance_question' && isAdministrativeKnowledgeQuestion(messageText)) {
+      return request('search_administrative_knowledge', 'read', intent, knowledgeArgs);
+    }
     if (intent === 'professional_question') return request('list_professionals', 'read', intent, { locationName });
+    if (intent === 'location_question') return request('list_locations', 'read', intent, {});
     if (intent === 'service_question' || intent === 'price_question') return request('list_services', 'read', intent, { professionalName });
     if (intent === 'insurance_question') return request('list_insurances', 'read', intent, { professionalName });
 
@@ -55,4 +68,9 @@ export class ConversationStateToolPlanner implements AiToolPlanner {
     }
     return null;
   }
+}
+
+function isAdministrativeKnowledgeQuestion(value: string) {
+  const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  return /\b(preparo|orientacao|documento|acompanhante|crianca|primeira consulta|pagamento|atraso|cancelamento|estacionamento|acessibilidade|horario|endereco|funciona|politica|autorizacao)\b/.test(text);
 }

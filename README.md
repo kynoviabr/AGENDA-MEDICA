@@ -88,6 +88,8 @@ O novo Aura AI Engine é ativado gradualmente por `whatsapp_ai_settings.ai_engin
 
 A Fase 5.6B adiciona estado conversacional pequeno e versionado, interpretação estruturada de intent/entidades, follow-ups, correções, referências, ambiguidades e clarificação. A Fase 5.6C conecta esse estado ao `SchedulingService` por tools tipadas: catálogos, disponibilidade e consultas do próprio paciente são read-only; criação, confirmação, cancelamento e reagendamento são mutations protegidas por autorização, revalidação de slot, idempotência e gates por clínica. O LLM nunca acessa Supabase, RPCs, banco ou provider. Todos os gates nascem desativados e mutations só podem ser ligadas após validação formal da leitura e com o engine em `active`. Veja [`docs/FASE_5_6C_AI_SCHEDULING_TOOLS.md`](docs/FASE_5_6C_AI_SCHEDULING_TOOLS.md).
 
+A Fase 5.6D acrescenta o **Administrative Knowledge Engine** com estratégia structured-first: endereço/unidade, profissionais, serviços e convênios são consultados nos cadastros canônicos; políticas e FAQs ficam versionadas, verificadas e vinculadas ao tenant. Toda resposta administrativa possui fonte e, quando ela não existe, a Aura informa que o dado não está confirmado e oferece encaminhamento humano. Conteúdo clínico é bloqueado. O gate `ai_knowledge_enabled` nasce desligado e exige validação formal. Veja [`docs/FASE_5_6D_ADMINISTRATIVE_KNOWLEDGE_ENGINE.md`](docs/FASE_5_6D_ADMINISTRATIVE_KNOWLEDGE_ENGINE.md).
+
 ## Módulos MVP desativados
 
 O repositório contém código de um MVP anterior para os módulos abaixo, mas eles estão **deliberadamente desativados no produto atual**:

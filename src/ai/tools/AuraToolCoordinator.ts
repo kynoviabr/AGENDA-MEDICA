@@ -19,6 +19,7 @@ export interface AiToolCoordinator {
     context: AiExecutionContext,
     conversation: AiConversationResult,
     config: AiClinicConfig,
+    messageText: string,
   ): Promise<AiCoordinatedToolResponse | null>;
 }
 
@@ -33,9 +34,9 @@ export class AuraToolCoordinator implements AiToolCoordinator {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async executeIfPlanned(context: AiExecutionContext, conversation: AiConversationResult, config: AiClinicConfig) {
+  async executeIfPlanned(context: AiExecutionContext, conversation: AiConversationResult, config: AiClinicConfig, messageText: string) {
     if (conversation.clarification || conversation.requiresHandoff || conversation.safetyDisposition === 'clinical_content_restricted') return null;
-    const tool = this.planner.plan({ context, intent: conversation.intent, state: conversation.state });
+    const tool = this.planner.plan({ context, intent: conversation.intent, state: conversation.state, messageText });
     if (!tool) return null;
     const result = await this.executor.execute({
       context, conversationState: conversation.state,
@@ -81,6 +82,6 @@ function stripTechnicalReferences(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripTechnicalReferences);
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => !['id', 'reference', 'patientId', 'leadId', 'clinicId', 'professionalId', 'locationId'].includes(key))
+    .filter(([key]) => !['id', 'recordId', 'reference', 'patientId', 'leadId', 'clinicId', 'professionalId', 'locationId', 'serviceId', 'insuranceId'].includes(key))
     .map(([key, item]) => [key, stripTechnicalReferences(item)]));
 }

@@ -1,5 +1,6 @@
 import type { AiToolAuditEvent, AiToolAuditRecorder, AiToolMutationGuard, AiToolRequest } from '../../tools/domain.ts';
 import type { AiExecutionContext } from '../../domain/models.ts';
+import type { AiKnowledgeAuditEvent, AiKnowledgeAuditRecorder } from '../../tools/AdministrativeKnowledgeToolExecutor.ts';
 import { AiValidationError } from '../../errors/AiError.ts';
 import type { AiSupabaseClientLike } from './SupabaseAiRuntimeRepository.ts';
 
@@ -26,5 +27,21 @@ export class SupabaseAiToolMutationGuard implements AiToolMutationGuard {
     });
     if (error) throw new AiValidationError('AI mutation claim failed.', error);
     return data === true;
+  }
+}
+
+export class SupabaseAiKnowledgeAuditRecorder implements AiKnowledgeAuditRecorder {
+  constructor(private readonly client: AiSupabaseClientLike) {}
+  async record(event: AiKnowledgeAuditEvent): Promise<void> {
+    const sourceRefs = event.sources.map((source) => ({
+      sourceType: source.sourceType, table: source.table, recordId: source.recordId,
+      field: source.field, revision: source.revision, verifiedAt: source.verifiedAt,
+    }));
+    const { error } = await this.client.from('ai_knowledge_answer_events').insert({
+      clinic_id: event.context.clinicId, conversation_id: event.context.conversationId,
+      correlation_id: event.context.correlationId, topic: event.topic, outcome: event.outcome,
+      source_refs: sourceRefs, latency_ms: event.latencyMs, occurred_at: event.occurredAt,
+    });
+    if (error) throw new AiValidationError('AI knowledge audit persistence failed.', error);
   }
 }
