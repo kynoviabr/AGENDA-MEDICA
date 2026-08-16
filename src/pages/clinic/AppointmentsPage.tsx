@@ -1267,13 +1267,18 @@ export default function AppointmentsPage() {
 
   const getApptsForDay = (day: Date) => filteredAppointments.filter((a) => isSameDay(getAppointmentStartDate(a), day));
   const selectedDoctors = professionals.filter((professional) => selectedDoctorIds.includes(professional.id));
+  const filterProfessionalLabel = filterProfessional === 'all'
+    ? 'Todos os médicos'
+    : filterProfessional === 'unassigned'
+      ? 'Não atribuído'
+      : professionals.find((professional) => professional.id === filterProfessional)?.label || 'Selecionar médico';
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   const headerLabel = viewMode === 'month'
-    ? format(currentDate, 'MMMM yyyy', { locale: ptBR })
+    ? format(currentDate, 'MMM yyyy', { locale: ptBR })
     : viewMode === 'week'
-    ? `${format(rangeStart, 'd', { locale: ptBR })} – ${format(rangeEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
-    : format(currentDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+    ? `${format(rangeStart, 'd', { locale: ptBR })}–${format(rangeEnd, 'd MMM yyyy', { locale: ptBR })}`
+    : format(currentDate, 'd MMM yyyy', { locale: ptBR });
   const now = clockNow;
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const agendaStartMinutes = 8 * 60;
@@ -1347,11 +1352,11 @@ export default function AppointmentsPage() {
           <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
           <BrandButton size="sm" variant="outline" className="ml-1 h-9" onClick={() => setCurrentDate(new Date())}>Hoje</BrandButton>
           <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
-          <h2 className="min-w-0 whitespace-nowrap text-sm font-semibold capitalize text-foreground sm:text-base xl:min-w-[245px]">{headerLabel}</h2>
+          <h2 className="mx-1 max-w-[170px] truncate whitespace-nowrap text-sm font-semibold capitalize text-foreground sm:text-base" title={headerLabel}>{headerLabel}</h2>
         </div>
         <Popover open={searchOpen && agendaSearch.trim().length >= 2} onOpenChange={setSearchOpen}>
           <PopoverTrigger asChild>
-            <div className="relative w-full shrink-0 md:w-[280px] xl:ml-auto">
+            <div className="relative w-full min-w-0 md:w-auto md:flex-1 xl:ml-1 xl:min-w-[180px]">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input value={agendaSearch} onFocus={() => setSearchOpen(true)} onChange={(event) => { setAgendaSearch(event.target.value); setSearchOpen(true); }} className="h-9 pl-9" placeholder="Buscar paciente ou agendamento" aria-label="Buscar paciente ou agendamento" />
             </div>
@@ -1370,7 +1375,7 @@ export default function AppointmentsPage() {
             )}
           </PopoverContent>
         </Popover>
-        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end 2xl:flex-nowrap">
           {viewMode === 'doctors-day' ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1407,15 +1412,20 @@ export default function AppointmentsPage() {
             </DropdownMenu>
           ) : (
             <Select value={filterProfessional} onValueChange={setFilterProfessional}>
-              <SelectTrigger className="h-9 w-[175px]"><SelectValue placeholder="Selecionar médico" /></SelectTrigger>
+              <SelectTrigger
+                className="h-9 w-[170px] min-w-0 [&>span:first-child]:block [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:whitespace-nowrap"
+                title={filterProfessionalLabel}
+              >
+                <SelectValue placeholder="Selecionar médico" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os médicos</SelectItem>
                 <SelectItem value="unassigned">Não atribuído</SelectItem>
                 {professionals.map(p => (
                   <SelectItem key={p.id} value={p.id}>
-                    <span className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full inline-block" style={{ background: p.color }} />
-                      {p.label}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: p.color }} />
+                      <span className="truncate">{p.label}</span>
                     </span>
                   </SelectItem>
                 ))}
@@ -1423,7 +1433,7 @@ export default function AppointmentsPage() {
             </Select>
           )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-9 w-[165px]"><SelectValue placeholder="Todos os status" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[150px]"><SelectValue placeholder="Todos os status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os status</SelectItem>
               <SelectItem value="scheduled">Agendado</SelectItem>
@@ -1435,12 +1445,12 @@ export default function AppointmentsPage() {
               <SelectItem value="no_show">Não compareceu</SelectItem>
             </SelectContent>
           </Select>
-          <Tabs value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
-            <TabsList className="h-9">
-              <TabsTrigger value="day">Dia</TabsTrigger>
-              <TabsTrigger value="week">Semana</TabsTrigger>
-              <TabsTrigger value="month">Mês</TabsTrigger>
-              <TooltipProvider><Tooltip><TooltipTrigger asChild><TabsTrigger value="doctors-day">Equipe</TabsTrigger></TooltipTrigger><TooltipContent>Visualizar agendas dos profissionais lado a lado.</TooltipContent></Tooltip></TooltipProvider>
+          <Tabs className="shrink-0" value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
+            <TabsList className="grid h-9 w-[204px] grid-cols-4">
+              <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="day">Dia</TabsTrigger>
+              <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="week">Semana</TabsTrigger>
+              <TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="month">Mês</TabsTrigger>
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><TabsTrigger className="min-w-0 px-2 text-xs sm:text-sm" value="doctors-day">Equipe</TabsTrigger></TooltipTrigger><TooltipContent>Visualizar agendas dos profissionais lado a lado.</TooltipContent></Tooltip></TooltipProvider>
             </TabsList>
           </Tabs>
         </div>
