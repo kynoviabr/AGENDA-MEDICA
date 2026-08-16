@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.whatsapp-connect]
 verify_jwt = true
+
+[functions.aura-operational-health]
+verify_jwt = false

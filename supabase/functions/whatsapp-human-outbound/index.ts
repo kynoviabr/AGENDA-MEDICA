@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizeOperationalCode } from "../../../src/ai/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,7 +74,14 @@ serve(async (req) => {
     return response({ ok: false, reason: "conversation_unavailable" }, 409);
   }
 
+  const correlationId = crypto.randomUUID();
+  const startedAt = Date.now();
   try {
+    await admin.rpc('record_ai_operational_event', {
+      p_clinic_id: payload.clinicId, p_conversation_id: payload.conversationId, p_correlation_id: correlationId,
+      p_channel: 'whatsapp', p_event_type: 'outbound_attempt', p_component: 'outbound', p_outcome: 'success',
+      p_error_code: null, p_error_category: null, p_retryable: null, p_latency_ms: null,
+    }).catch(() => undefined);
     const token = await decryptToken(connection.token_ciphertext);
     const meta = await sendText(conversation.phone, body, token, connection.phone_number_id);
     await admin.from("whatsapp_ai_messages").insert({
@@ -86,6 +94,11 @@ serve(async (req) => {
     await admin.from("whatsapp_ai_conversations").update({
       last_outbound_at: new Date().toISOString(), last_message_at: new Date().toISOString(),
     }).eq("id", payload.conversationId).eq("clinic_id", payload.clinicId);
+    await admin.rpc('record_ai_operational_event', {
+      p_clinic_id: payload.clinicId, p_conversation_id: payload.conversationId, p_correlation_id: correlationId,
+      p_channel: 'whatsapp', p_event_type: 'outbound_success', p_component: 'outbound', p_outcome: 'success',
+      p_error_code: null, p_error_category: null, p_retryable: null, p_latency_ms: Date.now() - startedAt,
+    }).catch(() => undefined);
     return response({ ok: true });
   } catch (error) {
     if (conversation.active_handoff_id) await admin.from("ai_handoff_events").insert({
@@ -95,8 +108,13 @@ serve(async (req) => {
     });
     console.error("whatsapp_human_outbound_failed", {
       clinicId: payload.clinicId, conversationId: payload.conversationId,
-      errorCode: error instanceof Error ? error.message.slice(0, 80) : "unknown",
+      errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_SEND_FAILURE'),
     });
+    await admin.rpc('record_ai_operational_event', {
+      p_clinic_id: payload.clinicId, p_conversation_id: payload.conversationId, p_correlation_id: correlationId,
+      p_channel: 'whatsapp', p_event_type: 'outbound_failure', p_component: 'outbound', p_outcome: 'failure',
+      p_error_code: 'WHATSAPP_SEND_FAILURE', p_error_category: 'whatsapp_send_failure', p_retryable: true, p_latency_ms: Date.now() - startedAt,
+    }).catch(() => undefined);
     return response({ ok: false, reason: "delivery_failed" }, 502);
   }
 });

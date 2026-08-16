@@ -275,6 +275,44 @@ export type Database = {
           },
         ]
       }
+      ai_admin_action_events: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          clinic_id: string
+          id: string
+          next_state: Json
+          occurred_at: string
+          previous_state: Json
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          clinic_id: string
+          id?: string
+          next_state?: Json
+          occurred_at?: string
+          previous_state?: Json
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          clinic_id?: string
+          id?: string
+          next_state?: Json
+          occurred_at?: string
+          previous_state?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_admin_action_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_conversation_handoffs: {
         Row: {
           accepted_at: string | null
@@ -458,6 +496,72 @@ export type Database = {
           },
           {
             foreignKeyName: "ai_knowledge_answer_events_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      ai_operational_events: {
+        Row: {
+          channel: string
+          clinic_id: string
+          component: string
+          conversation_id: string | null
+          correlation_id: string
+          created_at: string
+          error_category: string | null
+          error_code: string | null
+          event_type: string
+          id: string
+          latency_ms: number | null
+          occurred_at: string
+          outcome: string
+          retryable: boolean | null
+        }
+        Insert: {
+          channel?: string
+          clinic_id: string
+          component: string
+          conversation_id?: string | null
+          correlation_id: string
+          created_at?: string
+          error_category?: string | null
+          error_code?: string | null
+          event_type: string
+          id?: string
+          latency_ms?: number | null
+          occurred_at?: string
+          outcome: string
+          retryable?: boolean | null
+        }
+        Update: {
+          channel?: string
+          clinic_id?: string
+          component?: string
+          conversation_id?: string | null
+          correlation_id?: string
+          created_at?: string
+          error_category?: string | null
+          error_code?: string | null
+          event_type?: string
+          id?: string
+          latency_ms?: number | null
+          occurred_at?: string
+          outcome?: string
+          retryable?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_operational_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_operational_events_conversation_tenant_fk"
             columns: ["conversation_id", "clinic_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_ai_conversations"
@@ -5502,6 +5606,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      ai_feature_gate_snapshot: {
+        Args: {
+          p_row: Database["public"]["Tables"]["whatsapp_ai_settings"]["Row"]
+        }
+        Returns: Json
+      }
       assert_appointment_slot: {
         Args: {
           p_clinic_id: string
@@ -5811,6 +5921,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_aura_operational_metrics: {
+        Args: { p_clinic_id: string; p_since: string; p_until: string }
+        Returns: Json
+      }
+      get_aura_pilot_snapshot: { Args: { p_clinic_id: string }; Returns: Json }
       get_available_slots:
         | {
             Args: {
@@ -6149,6 +6264,22 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      record_ai_operational_event: {
+        Args: {
+          p_channel: string
+          p_clinic_id: string
+          p_component: string
+          p_conversation_id: string
+          p_correlation_id: string
+          p_error_category?: string
+          p_error_code?: string
+          p_event_type: string
+          p_latency_ms?: number
+          p_outcome: string
+          p_retryable?: boolean
+        }
+        Returns: undefined
       }
       renewal_tasks_daily_maintenance: { Args: never; Returns: undefined }
       request_ai_conversation_handoff: {

@@ -83,6 +83,15 @@ export interface AiEvaluationProviderOutput {
     inboundPersisted?: boolean;
     pendingMutationInvalidated?: boolean;
   };
+  production?: {
+    globalDisabled?: boolean;
+    clinicDisabled?: boolean;
+    readinessReady?: boolean;
+    aiOutboundCount?: number;
+    mutationCount?: number;
+    outboundPersisted?: boolean;
+    errorSanitized?: boolean;
+  };
 }
 
 export interface AiEvaluationTurn {
@@ -130,6 +139,7 @@ export interface AiEvaluationTurnCapture {
   requiresHandoff: boolean;
   tenantLeak: boolean;
   handoff?: AiEvaluationProviderOutput['handoff'];
+  production?: AiEvaluationProviderOutput['production'];
   errorCode?: string;
   latency: AiEvaluationLatency;
 }

@@ -239,8 +239,8 @@ Existem testes para cada assertion, sanitização de trace, métricas/rates/perc
 
 Após a extensão controlada da baseline pela Fase 5.6G:
 
-- dataset completo: 159 cenários, 159 aprovados;
-- fast: 63 cenários, 63 aprovados;
+- dataset completo: 166 cenários, 166 aprovados;
+- fast: 69 cenários, 69 aprovados;
 - critical failures: zero;
 - overall: 100%;
 - hallucination: 0%;
@@ -271,3 +271,7 @@ Após a extensão controlada da baseline pela Fase 5.6G:
 ## Extensão 5.6G
 
 A Fase 5.6G adicionou cenários sintéticos para handoff explícito, falhas repetidas, linguagem urgente, não duplicidade, disputa de ownership, isolamento de tenant, retorno à IA, suspensão durante atendimento humano, takeover manual, idempotência, resumo grounded e proteção de PII. O framework permaneceu estruturalmente inalterado.
+
+## Extensão 5.7
+
+A Fase 5.7 adicionou cenários sintéticos para kill switch global, disable por clínica, readiness blocker, indisponibilidade do provider, falha de banco fail-closed, falha outbound e não exposição de secrets. O dataset completo passou a 166 cenários e a suíte fast a 69, sem alterar thresholds.

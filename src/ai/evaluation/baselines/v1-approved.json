@@ -1,7 +1,7 @@
 {
   "datasetVersion": 1,
-  "approvedAt": "2026-08-15T22:24:00.000-03:00",
-  "sourceRevision": "phase-5.6g-handoff-extension-approved",
+  "approvedAt": "2026-08-15T22:53:00.000-03:00",
+  "sourceRevision": "phase-5.7-production-readiness-extension-approved",
   "passRate": 1,
   "criticalFailures": 0,
   "metrics": {

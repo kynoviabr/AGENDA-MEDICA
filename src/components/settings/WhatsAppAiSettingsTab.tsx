@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Bot, CheckCircle, Link2, MessageSquare, ShieldCheck, Unplug } from 'lucide-react';
+import { Activity, AlertTriangle, Bot, CheckCircle, Link2, MessageSquare, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useBranding } from '@/contexts/BrandingContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -30,6 +30,30 @@ type WhatsAppConnection = {
 };
 
 type EmbeddedSignupData = { phoneNumberId: string; wabaId: string };
+type ReadinessIssue = { code: string; message: string; check: string };
+type PilotHealthResponse = {
+  ok: boolean;
+  environment: 'local' | 'staging' | 'production' | 'unknown';
+  readiness: { ready: boolean; stage: string; blockers: ReadinessIssue[]; warnings: ReadinessIssue[]; health: { state: string } };
+  metrics: null | { conversations?: number; aiResponses?: number; handoffs?: number; toolFailures?: number; outboundFailures?: number };
+};
+
+const readinessLabels: Record<string, string> = {
+  APP_ENV_MISSING: 'O ambiente APP_ENV ainda não foi identificado.',
+  PILOT_ENVIRONMENT_LOCAL: 'Ambiente local não pode ser aprovado como piloto real.',
+  GLOBAL_SWITCH_NOT_CONFIGURED: 'O kill switch global ainda não foi configurado explicitamente.',
+  DATABASE_UNAVAILABLE: 'O banco não respondeu ao health check.',
+  GLOBAL_AI_DISABLED: 'O kill switch global da Aura está acionado.',
+  WHATSAPP_NOT_CONFIGURED: 'O WhatsApp da clínica não está conectado.',
+  OPENAI_NOT_CONFIGURED: 'A credencial backend da OpenAI não está configurada.',
+  CLINIC_CATALOG: 'Cadastre unidade, profissional e serviço ativos.',
+  SCHEDULING_NOT_CONFIGURED: 'Configure as regras de agenda dos profissionais.',
+  NO_AUTHORIZED_STAFF: 'Não há equipe autorizada para assumir handoffs.',
+  CLINIC_AI_DISABLED: 'A IA da clínica está desligada.',
+  NO_ACTIVE_INSURANCE: 'Nenhum convênio ativo foi cadastrado.',
+  LOW_KNOWLEDGE_COVERAGE: 'A base administrativa ainda não possui conteúdo publicado.',
+  HANDOFF_AUTOMATION_DISABLED: 'O handoff automático ainda não foi homologado.',
+};
 
 declare global {
   interface Window {
@@ -103,6 +127,19 @@ export default function WhatsAppAiSettingsTab() {
     },
     enabled: !!clinicId,
     retry: false,
+  });
+
+  const readinessQuery = useQuery({
+    queryKey: ['aura-pilot-readiness', clinicId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('aura-operational-health', { body: { clinicId, range: 'today' } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.reason || 'readiness_unavailable');
+      return data as PilotHealthResponse;
+    },
+    enabled: !!clinicId,
+    retry: false,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
@@ -190,6 +227,44 @@ export default function WhatsAppAiSettingsTab() {
 
   return (
     <div className="space-y-4">
+      <Card className="shadow-card">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5" />Status de prontidão da Aura</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => readinessQuery.refetch()} disabled={readinessQuery.isFetching}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${readinessQuery.isFetching ? 'animate-spin' : ''}`} />Atualizar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {readinessQuery.isLoading && <p className="text-sm text-muted-foreground">Verificando ambiente e configuração...</p>}
+          {readinessQuery.error && <div className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm"><AlertTriangle className="h-4 w-4 shrink-0 text-warning" />Health operacional ainda não publicado ou indisponível.</div>}
+          {readinessQuery.data && <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={readinessQuery.data.readiness.ready ? 'default' : 'destructive'}>{readinessQuery.data.readiness.ready ? 'Pronta para o estágio atual' : 'Não pronta'}</Badge>
+              <Badge variant="outline">Ambiente: {readinessQuery.data.environment}</Badge>
+              <Badge variant="outline">Estágio: {readinessQuery.data.readiness.stage}</Badge>
+            </div>
+            {readinessQuery.data.metrics && <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-5">
+              {[
+                ['Conversas hoje', readinessQuery.data.metrics.conversations || 0],
+                ['Respostas IA', readinessQuery.data.metrics.aiResponses || 0],
+                ['Handoffs', readinessQuery.data.metrics.handoffs || 0],
+                ['Falhas de tools', readinessQuery.data.metrics.toolFailures || 0],
+                ['Falhas outbound', readinessQuery.data.metrics.outboundFailures || 0],
+              ].map(([label, value]) => <div key={String(label)} className="rounded-lg border p-3"><p className="text-muted-foreground">{label}</p><p className="text-lg font-semibold">{value}</p></div>)}
+            </div>}
+            {!!readinessQuery.data.readiness.blockers.length && <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+              <p className="font-medium text-destructive">Bloqueadores</p>
+              {readinessQuery.data.readiness.blockers.map((item) => <p key={item.code}>• {readinessLabels[item.code] || item.code}</p>)}
+            </div>}
+            {!!readinessQuery.data.readiness.warnings.length && <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">Avisos</p>
+              {readinessQuery.data.readiness.warnings.map((item) => <p key={item.code}>• {readinessLabels[item.code] || item.code}</p>)}
+            </div>}
+          </>}
+        </CardContent>
+      </Card>
       <Card className="shadow-card">
         <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />WhatsApp com IA</CardTitle></CardHeader>
         <CardContent className="space-y-6">

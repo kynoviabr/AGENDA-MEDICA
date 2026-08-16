@@ -32,6 +32,8 @@ import {
   SupabaseAiConversationControlGuard,
   AuraHandoffService,
   canReleaseAiOutbound,
+  isGlobalAiDisabled,
+  normalizeOperationalCode,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -72,6 +74,20 @@ function json(body: Record<string, unknown>, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+async function recordOperational(admin: ReturnType<typeof createClient>, value: {
+  clinicId: string; conversationId?: string; correlationId: string;
+  type: string; component: string; outcome: 'success' | 'failure' | 'rejected';
+  errorCode?: string; errorCategory?: string; retryable?: boolean; latencyMs?: number;
+}) {
+  await admin.rpc('record_ai_operational_event', {
+    p_clinic_id: value.clinicId, p_conversation_id: value.conversationId || null,
+    p_correlation_id: value.correlationId, p_channel: 'whatsapp', p_event_type: value.type,
+    p_component: value.component, p_outcome: value.outcome,
+    p_error_code: value.errorCode || null, p_error_category: value.errorCategory || null,
+    p_retryable: value.retryable ?? null, p_latency_ms: value.latencyMs ?? null,
+  }).catch(() => undefined);
 }
 
 function extractInboundMessages(body: Record<string, unknown>): InboundMessage[] {
@@ -538,6 +554,7 @@ serve(async (req) => {
           .single();
 
       if (conversationError) throw conversationError;
+      const correlationId = crypto.randomUUID();
 
       if (currentConversation?.control_mode === "closed") {
         const { data: lastHandoff } = await admin.from("ai_conversation_handoffs")
@@ -562,6 +579,16 @@ serve(async (req) => {
       });
       if (inboundInsertError) throw inboundInsertError;
 
+      await recordOperational(admin, {
+        clinicId, conversationId: conversation.id, correlationId,
+        type: 'whatsapp_inbound_received', component: 'whatsapp', outcome: 'success',
+      });
+
+      if (isGlobalAiDisabled(Deno.env.get('AURA_AI_GLOBAL_DISABLED'))) {
+        processed.push({ messageId: inbound.messageId, conversationId: conversation.id, status: 'stored_without_reply', reason: 'global_ai_disabled' });
+        continue;
+      }
+
       if (settings?.is_enabled === false || !conversation.ai_enabled || conversation.status !== "open" || conversation.control_mode !== "ai_active") {
         processed.push({
           messageId: inbound.messageId,
@@ -575,10 +602,11 @@ serve(async (req) => {
 
       const engineMode = (settings?.ai_engine_mode || "legacy") as WhatsappAiEngineMode;
       const decision = decideWhatsappAiExecution(engineMode);
-      const correlationId = crypto.randomUUID();
       let auraReply: Awaited<ReturnType<WhatsappAuraAiBridge["process"]>> | null = null;
 
       if (decision.runAura) {
+        const aiStartedAt = Date.now();
+        await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'ai_processing_started', component: 'conversation', outcome: 'success' });
         try {
           auraReply = await createAuraBridge(admin, accessToken, settings?.openai_model).process({
             clinicId,
@@ -587,6 +615,10 @@ serve(async (req) => {
             correlationId,
             leadId: lead.id,
           }, toAuraInbound(inbound, clinicId, conversation.id));
+          await recordOperational(admin, {
+            clinicId, conversationId: conversation.id, correlationId,
+            type: 'ai_processing_completed', component: 'conversation', outcome: 'success', latencyMs: Date.now() - aiStartedAt,
+          });
           if (!decision.sendAura) {
             console.info("aura_ai_shadow_completed", {
               correlationId, clinicId, conversationId: conversation.id,
@@ -597,7 +629,7 @@ serve(async (req) => {
           }
         } catch (error) {
           const errorCode = typeof error === "object" && error && "code" in error
-            ? String((error as { code: unknown }).code)
+            ? normalizeOperationalCode((error as { code: unknown }).code, 'AI_PROCESSING_FAILED')
             : "AI_PROCESSING_FAILED";
           if (errorCode === "AI_CONVERSATION_SUSPENDED") {
             processed.push({
@@ -609,6 +641,11 @@ serve(async (req) => {
           console.error("aura_ai_processing_failed", {
             correlationId, clinicId, conversationId: conversation.id,
             messageType: inbound.messageType, errorCode,
+          });
+          await recordOperational(admin, {
+            clinicId, conversationId: conversation.id, correlationId,
+            type: 'ai_processing_failed', component: 'conversation', outcome: 'failure',
+            errorCode, errorCategory: errorCode === 'AI_TIMEOUT' ? 'provider_timeout' : 'unknown', retryable: errorCode === 'AI_TIMEOUT', latencyMs: Date.now() - aiStartedAt,
           });
           if (decision.sendAura) {
             auraReply = {
@@ -665,7 +702,20 @@ serve(async (req) => {
         continue;
       }
 
-      const whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
+      const outboundStartedAt = Date.now();
+      await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_attempt', component: 'outbound', outcome: 'success' });
+      let whatsappResponse: Awaited<ReturnType<typeof sendWhatsAppText>>;
+      try {
+        whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
+        await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_success', component: 'outbound', outcome: 'success', latencyMs: Date.now() - outboundStartedAt });
+      } catch (error) {
+        await recordOperational(admin, {
+          clinicId, conversationId: conversation.id, correlationId, type: 'outbound_failure', component: 'outbound', outcome: 'failure',
+          errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_SEND_FAILURE'),
+          errorCategory: 'whatsapp_send_failure', retryable: true, latencyMs: Date.now() - outboundStartedAt,
+        });
+        throw new Error('whatsapp_send_failure');
+      }
       const outboundMessageId = whatsappResponse?.messages?.[0]?.id ? String(whatsappResponse.messages[0].id) : null;
       const usage = aiReply.usage as Record<string, number | undefined>;
 
@@ -698,9 +748,7 @@ serve(async (req) => {
         clinic_id: clinicId,
         lead_id: lead.id,
         type: "whatsapp_ai_reply",
-        notes: engineMode === "active"
-          ? `Aura AI respondeu uma mensagem ${inbound.messageType}. Correlação: ${correlationId}.`
-          : `Lead: ${inbound.text}\n\nIA: ${aiReply.text}`,
+        notes: `Resposta administrativa ${engineMode === 'active' ? 'Aura' : 'legacy'} registrada. Tipo: ${inbound.messageType}. Correlação: ${correlationId}.`,
       });
 
       processed.push({
@@ -714,7 +762,7 @@ serve(async (req) => {
       console.info("whatsapp_ai_batch_completed", { count: processed.length, processed });
     })().catch((error) => {
       console.error("whatsapp_ai_batch_failed", {
-        error: (error as Error).message,
+        errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_BATCH_FAILED'),
         messageCount: inboundMessages.length,
       });
     });
@@ -722,6 +770,7 @@ serve(async (req) => {
     EdgeRuntime.waitUntil(processing);
     return json({ ok: true, accepted: inboundMessages.length });
   } catch (error) {
-    return json({ ok: false, error: (error as Error).message }, 500);
+    console.error('whatsapp_ai_request_failed', { errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_REQUEST_FAILED') });
+    return json({ ok: false, reason: "internal_error" }, 500);
   }
 });

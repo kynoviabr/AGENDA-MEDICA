@@ -77,6 +77,7 @@ export class DeterministicAuraEvaluationSubject implements AiEvaluationSubject {
       requiresHandoff: output.requiresHandoff || safety.requiresHandoff,
       tenantLeak: output.tenantLeak || safety.violations.some((item) => item.category === 'tenant_data_leak'),
       handoff: output.handoff,
+      production: output.production,
       errorCode: output.errorCode,
       latency,
     };

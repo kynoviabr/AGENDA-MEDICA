@@ -64,6 +64,8 @@ VITE_META_CONFIG_ID=
 Secrets das Supabase Edge Functions, administrados somente pela Kynovia:
 
 ```env
+APP_ENV=local
+AURA_AI_GLOBAL_DISABLED=true
 META_APP_ID=
 META_APP_SECRET=
 META_CONFIG_ID=
@@ -75,6 +77,8 @@ OPENAI_MODEL=gpt-5.6-luna
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 OPENAI_VISION_MODEL=gpt-5.6-luna
 ```
+
+`APP_ENV` deve ser definido explicitamente como `local`, `staging` ou `production` em cada ambiente; URL não é usada para inferi-lo. `AURA_AI_GLOBAL_DISABLED=true` é o kill switch backend global e impede respostas de IA sem desligar o Safety Validator seletivamente. Para liberar um ambiente homologado, altere-o explicitamente para `false`.
 
 `WHATSAPP_TOKEN_ENCRYPTION_KEY` deve ser uma chave aleatória forte com pelo menos 32 caracteres. Não use chaves da Meta ou do Supabase como chave de criptografia. O callback único da plataforma é:
 
@@ -95,6 +99,8 @@ A Fase 5.6E adiciona uma barreira obrigatória e determinística depois do draft
 A Fase 5.6F cria o framework versionado de avaliação do Aura. O dataset v1 usa apenas dados sintéticos, possui suites fast/full, critical scenarios, assertions estruturadas, métricas, quality gates, baseline e relatórios JSON sem PHI. A suíte determinística roda sem OpenAI; o modo com modelo real é separado e gated. Use `npm run eval:ai:fast` durante o desenvolvimento e `npm run eval:ai` para a avaliação completa. Veja [`docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md`](docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md).
 
 A Fase 5.6G transforma os sinais de handoff em fluxo operacional: fila por clínica, motivo e prioridade administrativa, resumo sanitizado, takeover atômico, ownership exclusivo, envio humano pelo WhatsApp, transferência, devolução opcional para IA e trilha de auditoria sem conteúdo. Enquanto a conversa está em handoff ou atendimento humano, a IA e suas tools ficam suspensas. O gate automático nasce desligado e nenhuma clínica é ativada sem homologação. Veja [`docs/FASE_5_6G_HUMAN_HANDOFF_CONVERSATION_ESCALATION.md`](docs/FASE_5_6G_HUMAN_HANDOFF_CONVERSATION_ESCALATION.md).
+
+A Fase 5.7 adiciona readiness e observabilidade para um piloto controlado: health endpoint, métricas agregadas por clínica/range, erros sanitizados, auditoria de feature gates, kill switch global backend-only e checklist de rollout/rollback. Nenhuma clínica é habilitada automaticamente, e staging/backup/PITR continuam requisitos explícitos antes de dados reais. Veja [`docs/FASE_5_7_PRODUCTION_READINESS_OBSERVABILITY_PILOT_ROLLOUT.md`](docs/FASE_5_7_PRODUCTION_READINESS_OBSERVABILITY_PILOT_ROLLOUT.md).
 
 ## Módulos MVP desativados
 

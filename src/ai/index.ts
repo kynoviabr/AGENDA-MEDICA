@@ -41,3 +41,4 @@ export * from './tools/AuraToolCoordinator.ts';
 export * from './tools/OpenAiToolResponseComposer.ts';
 export * from './safety/index.ts';
 export * from './handoff/index.ts';
+export * from './observability/index.ts';
