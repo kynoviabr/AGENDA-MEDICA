@@ -5,3 +5,4 @@ export * from './health.ts';
 export * from './metrics.ts';
 export * from './AuraPilotReadinessService.ts';
 export * from './PlatformPilotReadinessService.ts';
+export * from './AuraEnvironmentReadinessService.ts';

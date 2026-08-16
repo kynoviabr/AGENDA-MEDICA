@@ -1,43 +1,30 @@
 # Aura — Backup and Recovery Evidence
 
-Verificado em: 2026-08-15. Provider: Supabase. Projeto: `nklccxaeasoxjanxgqcl` (`AGENDA-MEDICA`, sa-east-1).
+Verificado em 2026-08-15. Provider: Supabase. Ambiente auditado: **STAGING**. Project ref: `nklccxaeasoxjanxgqcl`.
 
-## Evidência do provider
+## Evidência real
 
-Consulta autenticada pela CLI oficial `supabase backups list`:
-
-| Item | Resultado | Status |
+| Item | Resultado | Fonte |
 |---|---|---|
-| mecanismo físico/WAL-G | habilitado | VERIFIED |
-| backups restauráveis listados | nenhum | BLOCKED |
-| PITR | desabilitado | BLOCKED |
-| janela de retenção PITR | não aplicável/não disponível | BLOCKED |
-| restore disponível | não comprovado | BLOCKED |
+| mecanismo WAL-G | habilitado | CLI autenticada |
+| backups restauráveis listados | zero | CLI autenticada |
+| PITR | disabled | CLI autenticada |
+| restore test | não executado | sem restore point/target isolado |
 
-Não foi inferida proteção a partir de documentação genérica ou do código.
+## Classificação por nível
 
-## Targets operacionais
+- **STAGING READY:** backup/PITR/restore não são blockers obrigatórios para desenvolvimento com dados exclusivamente sintéticos. Permanecem risco operacional documentado.
+- **REAL PILOT READY:** política de backup aceita e restore real testado são blockers obrigatórios.
 
-- Target RPO proposto: até 24 horas, condicionado à contratação/configuração de backup verificável.
-- Target RTO proposto: até 4 horas, condicionado a restore testado e runbook aprovado.
+A reclassificação não resolve nem mascara backup. Apenas posiciona a exigência no nível correto.
 
-São targets internos, não SLA nem compromisso contratual.
+## Targets futuros para production
 
-## Restore test
+- target RPO proposto: até 24 horas;
+- target RTO proposto: até 4 horas.
 
-- Data: não executado.
-- Target: nenhum projeto isolado de restore foi provisionado.
-- Resultado: `MANUAL_VERIFICATION_REQUIRED` / blocker aberto.
-- Production não foi restaurada nem alterada.
+São targets internos, não SLA.
 
-## Ação exata
+## Restore futuro
 
-1. No Supabase do projeto production, abrir **Database → Backups** e escolher plano/retenção aceitos.
-2. Ativar PITR quando o plano permitir e registrar a janela real.
-3. Criar projeto isolado e temporário de restore, nunca production.
-4. Restaurar um ponto disponível nesse projeto.
-5. Validar apenas estrutura, RLS, migrations, índices e contagens agregadas de tenants, appointments e conversations.
-6. Não copiar conteúdo ou PII para logs/relatórios.
-7. Registrar data, target project ref seguro, resultado estrutural e destruir/arquivar o ambiente conforme política aprovada.
-
-Até esses passos terminarem, o restore blocker não pode ser convertido em warning.
+Antes do piloto real: configurar backup/PITR aceitos em production, obter restore point, restaurar em projeto isolado, validar schema, tenants, appointments, conversations, RLS, migrations e índices sem registrar PII. Nunca restaurar sobre production.

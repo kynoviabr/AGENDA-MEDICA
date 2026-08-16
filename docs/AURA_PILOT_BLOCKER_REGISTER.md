@@ -1,26 +1,37 @@
 # Aura — Pilot Blocker Register
 
-Atualizado em: 2026-08-15.
+Atualizado em 2026-08-15 após reclassificação do remoto atual para staging.
 
-| Blocker | Status | Evidence | Owner/next action | Pilot impact |
-|---|---|---|---|---|
-| staging Supabase separado | OPEN | `AURA_ENVIRONMENT_SEPARATION_EVIDENCE.md` | operador: criar projeto staging dedicado | impede smoke e Shadow Pilot |
-| deployment staging separado | OPEN | CLI Vercel: repo não ligado | operador: criar/linkar deployment staging | impede smoke end-to-end |
-| `APP_ENV=staging` | OPEN | staging ausente | operador: configurar secret no staging | readiness fail-closed |
-| `APP_ENV=production` | CLOSED | health remoto HTTP 200 com `production` | manter por ambiente | resolvido |
-| separação backend secrets/OpenAI/Meta | MANUAL_VERIFICATION_REQUIRED | inventário mostra staging/custom secrets ausentes | criar keys/apps/número staging separados e registrar presença | impede tráfego real |
-| webhook staging/production | MANUAL_VERIFICATION_REQUIRED | endpoint staging ausente; Meta console não auditado | conferir callback e número em cada Meta app | risco de roteamento cruzado |
-| migration parity production | CLOSED | CLI local vs remote até `20260816033000` | repetir após migrations futuras | resolvido para production |
-| migration parity staging | OPEN | staging ausente | aplicar somente migrations conhecidas após provisionamento | impede smoke |
-| backup restaurável | OPEN | provider retornou zero backups | configurar plano/retenção e obter restore point | risco de perda de dados |
-| PITR | OPEN | provider retornou disabled | habilitar/aceitar requisito explicitamente | NO_GO obrigatório |
-| restore isolado | OPEN | não executado | restaurar em projeto isolado e validar estrutura | NO_GO obrigatório |
-| clínica/dados/staff sintéticos staging | OPEN | staging ausente | executar seed exclusivamente sintético | impede smoke funcional |
-| staging smoke completo | OPEN | runner criado, ambiente ausente | executar `npm run smoke:staging` + runbook | impede platform readiness |
-| rollback/kill-switch drill staging | OPEN | não executado | testar global/clinic gates e restauração | impede platform readiness |
-| staging logs/privacy/correlation | OPEN | staging ausente | revisar eventos e logs após smoke | impede platform readiness |
-| quality gates locais | CLOSED | 269 tests; eval 69/69 e 166/166; 11 SQL packs | manter em CI/release | resolvido no código |
+## Staging blockers
+
+| Blocker | Status | Evidência / ação |
+|---|---|---|
+| classificação do remote como staging | CLOSED | decisão + health `environment=staging` |
+| APP_ENV staging | CLOSED | health remoto HTTP 200 |
+| migrations staging | CLOSED | 71 migrations; latest `20260816033000` |
+| OpenAI staging | OPEN | criar/configurar key de desenvolvimento |
+| Meta/webhook/encryption staging | MANUAL_VERIFICATION_REQUIRED | configurar app/número/test secrets próprios |
+| clínica, staff e dados exclusivamente sintéticos | OPEN | criar/verificar fixture sintética |
+| readiness autenticada tenant-scoped | OPEN | executar com staff/clinic sintéticos |
+| inbound/dedup/conversation/knowledge/read smoke | OPEN | executar após provider/test config |
+| kill switch + rollback drill | OPEN | signed inbound sintético e restauração do estado |
+| observability/correlation/privacy log review | OPEN | verificar após smoke end-to-end |
+| quality gates locais | CLOSED | tests/eval/SQL/typecheck/lint/build verdes |
+
+## Real-pilot blockers
+
+| Blocker | Status | Ação |
+|---|---|---|
+| production | OPEN | provisionar Supabase e application deployment separados |
+| APP_ENV/secrets production | OPEN | configurar exclusivamente no novo ambiente |
+| backup/PITR policy | OPEN | aceitar/configurar requisitos reais |
+| restore test | OPEN | restaurar production backup em target isolado |
+| clínica piloto onboarding | OPEN | completar checklist sem ativação automática |
+| rollout approval | OPEN | decisão humana explícita após readiness |
 
 ## Resultado
 
-`PILOT BLOCKERS REMAIN` — `NO_GO`.
+- `STAGING_STATUS=STAGING_NOT_READY`
+- `REAL_PILOT_STATUS=REAL_PILOT_NOT_READY`
+
+Backup/PITR não bloqueiam o desenvolvimento no staging sintético, mas continuam blockers obrigatórios do piloto real.

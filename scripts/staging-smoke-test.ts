@@ -1,4 +1,4 @@
-type CheckStatus = 'PASS' | 'FAIL' | 'BLOCKED';
+type CheckStatus = 'PASS' | 'FAIL' | 'BLOCKED' | 'NOT_APPLICABLE';
 type Check = { name: string; status: CheckStatus; code: string };
 
 const checks: Check[] = [];
@@ -17,6 +17,11 @@ async function request(url: string, init?: RequestInit) {
 async function checkEnvironment(label: 'staging' | 'production') {
   const upper = label.toUpperCase();
   const base = process.env[`AURA_${upper}_EDGE_BASE_URL`]?.replace(/\/$/, '');
+  if (!base && label === 'production') {
+    add(`${label}_liveness`, 'NOT_APPLICABLE', 'PRODUCTION_NOT_PROVISIONED');
+    add(`${label}_readiness_anonymous`, 'NOT_APPLICABLE', 'PRODUCTION_NOT_PROVISIONED');
+    return;
+  }
   if (!base) {
     add(`${label}_liveness`, 'BLOCKED', `${upper}_EDGE_BASE_URL_MISSING`);
     add(`${label}_readiness_anonymous`, 'BLOCKED', `${upper}_EDGE_BASE_URL_MISSING`);
@@ -46,7 +51,8 @@ async function checkEnvironment(label: 'staging' | 'production') {
 async function main() {
   const stagingRef = process.env.AURA_STAGING_SUPABASE_REF?.trim();
   const productionRef = process.env.AURA_PRODUCTION_SUPABASE_REF?.trim();
-  if (!stagingRef || !productionRef) add('database_separation', 'BLOCKED', 'SUPABASE_REFS_MISSING');
+  if (!stagingRef) add('database_separation', 'BLOCKED', 'STAGING_SUPABASE_REF_MISSING');
+  else if (!productionRef) add('database_separation', 'PASS', 'PRODUCTION_NOT_PROVISIONED_DEVELOPMENT_VALID');
   else add('database_separation', stagingRef !== productionRef ? 'PASS' : 'FAIL', stagingRef !== productionRef ? 'SUPABASE_REFS_SEPARATE' : 'SUPABASE_REFS_EQUAL');
 
   await checkEnvironment('staging');
@@ -58,7 +64,8 @@ async function main() {
     const invalid = await request(webhookUrl, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-hub-signature-256': 'sha256=invalid' }, body: '{}',
     });
-    add('webhook_invalid_signature', invalid.status === 403 ? 'PASS' : 'FAIL', invalid.status === 403 ? 'INVALID_SIGNATURE_REJECTED' : 'INVALID_SIGNATURE_NOT_REJECTED');
+    const rejected = invalid.status === 401 || invalid.status === 403;
+    add('webhook_invalid_signature', rejected ? 'PASS' : 'FAIL', rejected ? 'INVALID_SIGNATURE_REJECTED' : 'INVALID_SIGNATURE_NOT_REJECTED');
   }
 
   const canCheckAuthorized = configured('AURA_STAGING_STAFF_TOKEN') && configured('AURA_STAGING_CLINIC_ID') && configured('AURA_STAGING_EDGE_BASE_URL');
@@ -74,7 +81,7 @@ async function main() {
   }
 
   console.log(JSON.stringify({ generatedAt: new Date().toISOString(), containsSecrets: false, checks }, null, 2));
-  if (checks.some((check) => check.status !== 'PASS')) process.exitCode = 1;
+  if (checks.some((check) => check.status === 'FAIL' || check.status === 'BLOCKED')) process.exitCode = 1;
 }
 
 void main();

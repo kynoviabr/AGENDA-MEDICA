@@ -103,3 +103,32 @@ export interface PlatformPilotReadiness {
   blockers: readonly PlatformReadinessIssue[];
   warnings: readonly PlatformReadinessIssue[];
 }
+
+export interface StagingReadinessEvidence {
+  remoteProjectClassifiedAsStaging: OperationalEvidenceStatus;
+  stagingAppEnvironment: OperationalEvidenceStatus;
+  stagingHealthPassed: OperationalEvidenceStatus;
+  stagingSyntheticDataConfirmed: OperationalEvidenceStatus;
+  stagingSmokePassed: OperationalEvidenceStatus;
+  stagingKillSwitchTested: OperationalEvidenceStatus;
+  criticalEvaluationPassed: OperationalEvidenceStatus;
+  tenantPrivacyChecksPassed: OperationalEvidenceStatus;
+}
+
+export interface RealPilotReadinessEvidence {
+  productionProvisioned: OperationalEvidenceStatus;
+  productionAppEnvironment: OperationalEvidenceStatus;
+  productionSecretsSeparated: OperationalEvidenceStatus;
+  backupPolicyAccepted: OperationalEvidenceStatus;
+  restoreTestPassed: OperationalEvidenceStatus;
+  clinicOnboardingCompleted: OperationalEvidenceStatus;
+  explicitRolloutApproval: OperationalEvidenceStatus;
+}
+
+export interface EnvironmentReadinessResult {
+  developmentReadyForStaging: boolean;
+  stagingReady: boolean;
+  realPilotReady: boolean;
+  stagingBlockers: readonly PlatformReadinessIssue[];
+  realPilotBlockers: readonly PlatformReadinessIssue[];
+}

@@ -1,61 +1,63 @@
 # Aura — Staging Validation Report
 
-Data: 2026-08-15. Resultado: **BLOCKED — staging não provisionado**.
+Data: 2026-08-15. Ambiente: Supabase `nklccxaeasoxjanxgqcl`. Resultado: **STAGING_NOT_READY**.
 
-## Ambiente e migrations
+## Ambiente
 
-- staging application: BLOCKED;
-- staging Supabase: BLOCKED;
-- `APP_ENV=staging`: BLOCKED;
-- migration parity staging: BLOCKED;
-- production migration parity: VERIFIED até `20260816033000`;
-- local migration/test database: disponível.
+- remoto oficialmente classificado como STAGING: PASS;
+- `APP_ENV=staging`: PASS;
+- liveness HTTP 200 e `environment=staging`: PASS;
+- production: NOT PROVISIONED / NOT APPLICABLE;
+- migration parity: 71 migrations, latest local/remote `20260816033000`: PASS;
+- global kill switch configurado `true`: PASS de configuração;
+- OpenAI/Meta/webhook/encryption custom secrets: não configurados ou não verificados.
 
 ## Smoke runner
 
-Foi criado `scripts/staging-smoke-test.ts` e o comando `npm run smoke:staging`. O runner:
+`npm run smoke:staging` foi atualizado para aceitar production ausente durante desenvolvimento. Resultado:
 
-- não contém credentials;
-- compara project refs;
-- valida liveness e ambiente explícito;
-- exige readiness anônima `401`;
-- rejeita assinatura sintética inválida no webhook;
-- pode validar readiness autenticada com token efêmero fornecido pelo operador;
-- emite somente códigos/status e nunca response body, telefone, prompt ou token;
-- retorna exit code diferente de zero se qualquer verificação estiver FAIL/BLOCKED.
-
-## Resultados
-
-| Teste | Resultado |
+| Check | Resultado |
 |---|---|
-| health/liveness staging | BLOCKED |
-| readiness staging autorizada | BLOCKED |
-| assinatura inválida/assinada | BLOCKED no staging |
-| inbound e deduplicação | BLOCKED no staging |
-| conversation/knowledge/unknown knowledge/read scheduling | BLOCKED no staging; comportamento determinístico verde localmente |
-| medical safety/prompt injection | BLOCKED no staging; gates críticos 100% localmente |
-| handoff/takeover/human outbound/return/no-double-response | BLOCKED no staging; suites unitárias/SQL/eval verdes |
-| global/clinic kill switch | BLOCKED no staging |
-| rollback drill | BLOCKED |
-| OpenAI incident drill | BLOCKED no staging; fake determinístico verde |
-| WhatsApp failure drill | BLOCKED no staging; fake determinístico verde |
-| database fail-closed | BLOCKED no staging; fake determinístico verde |
-| observability/correlation | BLOCKED no staging; unit/SQL verdes |
-| staging privacy log review | BLOCKED |
+| project staging presente / production ausente | PASS |
+| staging liveness/environment | PASS |
+| readiness anônima | PASS, HTTP 401 |
+| invalid webhook signature | PASS, rejeitada HTTP 401 |
+| readiness autenticada tenant-scoped | BLOCKED — token efêmero e clínica sintética não disponíveis |
+| valid signed webhook | MANUAL — Meta secret/test config ausente |
 
-## Evidência local/production não destrutiva
+## Fluxos funcionais
 
-- production liveness: HTTP 200, `environment=production`;
-- production readiness anônima: HTTP 401;
-- production kill switch global: configurado `true`;
-- 41 arquivos / 269 testes Vitest: PASS;
-- eval fast: 69/69, PASS;
-- eval full: 166/166, PASS;
+| Fluxo | Evidência local | Evidência staging |
+|---|---|---|
+| deduplication | SQL/unit PASS | BLOCKED |
+| conversation | unit/eval PASS | BLOCKED |
+| knowledge known/unknown | unit/eval/SQL PASS | BLOCKED |
+| scheduling read | unit/SQL PASS | BLOCKED |
+| medical safety/injection | critical eval PASS | BLOCKED end-to-end |
+| handoff/takeover/return/no-double-response | unit/SQL/eval PASS | NOT APPLICABLE até gate homologado |
+| incident provider unavailable | fake/eval PASS | BLOCKED |
+| observability/correlation | unit/SQL PASS | BLOCKED end-to-end |
+| privacy/log review | static/unit PASS | BLOCKED no runtime staging |
+
+## Synthetic data
+
+Não foi criada clínica sintética automaticamente. A existência e a natureza exclusivamente sintética dos dados remotos não foram verificadas por consulta de conteúdo. Nenhum dado foi apagado, copiado ou alterado.
+
+## Kill switch e rollback
+
+O switch global permaneceu `true`. Não havia signed inbound seguro para comprovar `true → sem resposta`, portanto rollback drill end-to-end não foi executado. Nenhum gate de clínica foi modificado para forçar resultado verde.
+
+## Quality gates
+
+- Vitest: 42 arquivos / 271 testes — PASS;
+- eval fast: 69/69 — PASS;
+- eval full: 166/166 — PASS;
 - critical failures: 0;
-- tenant, medical safety, mutation confirmation e grounding críticos: 100%; false success: 0;
-- 11 pacotes SQL locais transacionais: PASS;
-- typecheck: PASS;
-- lint direcionado: PASS;
-- build: PASS, apenas warnings conhecidos de Browserslist/chunk;
+- 11 pacotes SQL tenant-safe — PASS;
+- typecheck, lint direcionado, build e git diff check — PASS.
 
-Nenhum smoke com dado real, outbound production ou mutation production foi executado.
+## Readiness
+
+- `DEVELOPMENT_READY_FOR_STAGING=true`;
+- `STAGING_READY=false` por ausência de fixture/staff sintéticos, readiness autenticada, secrets/provider config e smoke funcional;
+- `REAL_PILOT_READY=false` porque production não existe e backup/restore/onboarding ainda não foram executados.

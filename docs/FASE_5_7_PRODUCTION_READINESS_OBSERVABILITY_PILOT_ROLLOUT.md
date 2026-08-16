@@ -1,5 +1,7 @@
 # Fase 5.7 — Production Readiness, Observability & Pilot Rollout
 
+> Correção 5.7.1-R (2026-08-15): o remoto `nklccxaeasoxjanxgqcl` foi oficialmente reclassificado como **staging**. Production está **NOT PROVISIONED**. As referências históricas abaixo descrevem o estado observado durante a execução original da 5.7, antes dessa decisão.
+
 ## Objetivo
 
 Preparar o Aura para avaliação por uma clínica piloto real, sem ativar clínica, adicionar provider externo ou criar nova feature clínica. Esta fase torna saúde, configuração, falhas, métricas, rollback e limites de privacidade verificáveis.
