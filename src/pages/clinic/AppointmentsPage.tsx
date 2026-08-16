@@ -1375,7 +1375,7 @@ export default function AppointmentsPage() {
             )}
           </PopoverContent>
         </Popover>
-        <div className="flex min-w-0 flex-wrap items-center gap-2.5 xl:justify-end 2xl:flex-nowrap">
+        <div className="flex min-w-0 flex-wrap items-center gap-2.5 xl:ml-auto xl:justify-end 2xl:flex-nowrap">
           {viewMode === 'doctors-day' ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
