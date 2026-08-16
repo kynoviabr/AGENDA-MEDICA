@@ -1586,6 +1586,7 @@ export type Database = {
       clinics: {
         Row: {
           accent_color: string | null
+          administrative_manager_name: string | null
           address: string | null
           city: string | null
           created_at: string
@@ -1598,6 +1599,7 @@ export type Database = {
           phone: string | null
           plan_name: string
           primary_color: string | null
+          reception_contact_name: string | null
           secondary_color: string | null
           slug: string
           state: string | null
@@ -1609,6 +1611,7 @@ export type Database = {
         }
         Insert: {
           accent_color?: string | null
+          administrative_manager_name?: string | null
           address?: string | null
           city?: string | null
           created_at?: string
@@ -1621,6 +1624,7 @@ export type Database = {
           phone?: string | null
           plan_name?: string
           primary_color?: string | null
+          reception_contact_name?: string | null
           secondary_color?: string | null
           slug: string
           state?: string | null
@@ -1632,6 +1636,7 @@ export type Database = {
         }
         Update: {
           accent_color?: string | null
+          administrative_manager_name?: string | null
           address?: string | null
           city?: string | null
           created_at?: string
@@ -1644,6 +1649,7 @@ export type Database = {
           phone?: string | null
           plan_name?: string
           primary_color?: string | null
+          reception_contact_name?: string | null
           secondary_color?: string | null
           slug?: string
           state?: string | null

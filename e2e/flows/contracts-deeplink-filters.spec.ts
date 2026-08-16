@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { login } from '../helpers/auth';
 
-test.describe('Fluxo E2E - Contratos (deep link de filtros)', () => {
+test.describe.skip('LEGADO ISOLADO - Contratos (deep link de filtros)', () => {
   test('abre contratos com filtros via query string', async ({ page }) => {
     await login(page);
 

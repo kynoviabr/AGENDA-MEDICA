@@ -27,7 +27,6 @@ const navItems: NavItem[] = [
   { to: '/clinic/whatsapp-ai', icon: MessageSquare, label: 'WhatsApp IA', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'whatsapp_ai.view' },
   { to: '/clinic/patients', icon: Users, label: 'Pacientes', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'patients.view' },
   { to: '/clinic/treatments', icon: Stethoscope, label: 'Tratamentos', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'treatments.view' },
-  { to: '/clinic/reports', icon: MessageSquare, label: 'Relatórios', roles: ['admin', 'sales'], permissionKey: 'reports.view' },
   { to: '/clinic/settings', icon: Settings, label: 'Configurações', roles: ['admin'], permissionKey: 'settings.view' },
 ];
 

@@ -16,6 +16,7 @@ test-results/
 artifacts/ai-evals/
 mockups/.video-tmp/
 supabase/.temp/
+supabase/.branches/
 tmp-settings.png
 
 # Editor directories and files

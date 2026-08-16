@@ -13,12 +13,11 @@ import OnboardingPage from "./pages/OnboardingPage";
 import ClinicLayout from "./components/layouts/ClinicLayout";
 import PatientPortalLayout from "./components/layouts/PatientPortalLayout";
 import ClinicDashboard from "./pages/clinic/DashboardPage";
-import CrmPage from "./pages/clinic/CrmPage";
+import MicroCrmPage from "./pages/clinic/MicroCrmPage";
 import PatientsPage from "./pages/clinic/PatientsPage";
-import PatientDetailPage from "./pages/clinic/PatientDetailPage";
-import TreatmentsPage from "./pages/clinic/TreatmentsPage";
+import AdministrativePatientDetailPage from "./pages/clinic/AdministrativePatientDetailPage";
+import ServicesPage from "./pages/clinic/ServicesPage";
 import AppointmentsPage from "./pages/clinic/AppointmentsPage";
-import ReportsPage from "./pages/clinic/ReportsPage";
 import SettingsPage from "./pages/clinic/SettingsPage";
 import WhatsAppAiPage from "./pages/clinic/WhatsAppAiPage";
 import PortalHomePage from "./pages/portal/PortalHomePage";
@@ -51,14 +50,14 @@ const App = () => (
                 </ProtectedRoute>
               }>
                 <Route index element={<ClinicDashboard />} />
-                <Route path="crm" element={<CrmPage />} />
+                <Route path="crm" element={<MicroCrmPage />} />
                 <Route path="whatsapp-ai" element={<WhatsAppAiPage />} />
                 <Route path="patients" element={<PatientsPage />} />
-                <Route path="patients/:id" element={<PatientDetailPage />} />
-                <Route path="treatments" element={<TreatmentsPage readOnly />} />
+                <Route path="patients/:id" element={<AdministrativePatientDetailPage />} />
+                <Route path="treatments" element={<ServicesPage readOnly />} />
                 <Route path="health-insurances" element={<Navigate to="/clinic/settings?section=healthcare" replace />} />
                 <Route path="appointments" element={<AppointmentsPage />} />
-                <Route path="reports" element={<ReportsPage />} />
+                <Route path="reports/*" element={<Navigate to="/clinic" replace />} />
                 <Route path="settings" element={<SettingsPage />} />
 
                 {/*

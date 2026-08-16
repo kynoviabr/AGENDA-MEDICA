@@ -76,8 +76,6 @@ export default function LocationsTab() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [form, setForm] = useState<LocationForm>(emptyLocationForm());
-  const [professionalId, setProfessionalId] = useState('');
-  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [exceptionDate, setExceptionDate] = useState('');
   const [exceptionReason, setExceptionReason] = useState('');
   const [exceptionClosed, setExceptionClosed] = useState(true);
@@ -88,17 +86,6 @@ export default function LocationsTab() {
     queryFn: async () => {
       const { data, error } = await supabase.from('clinic_locations').select('*')
         .eq('clinic_id', clinicId!).order('is_primary', { ascending: false }).order('name');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!clinicId,
-  });
-  const professionalsQuery = useQuery({
-    queryKey: ['location-professionals', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('professionals')
-        .select('id,full_name,specialty,professional_locations(location_id,active)')
-        .eq('clinic_id', clinicId!).eq('status', 'active').order('full_name');
       if (error) throw error;
       return data || [];
     },
@@ -168,24 +155,6 @@ export default function LocationsTab() {
     onError: (error: Error) => toast({ title: 'Não foi possível salvar', description: error.message, variant: 'destructive' }),
   });
 
-  const saveLinks = useMutation({
-    mutationFn: async () => {
-      if (!clinicId || !professionalId) throw new Error('Selecione um profissional.');
-      const client = supabase.from('professional_locations');
-      const { error: deleteError } = await client.delete().eq('clinic_id', clinicId).eq('professional_id', professionalId);
-      if (deleteError) throw deleteError;
-      if (selectedLocationIds.length) {
-        const { error } = await client.insert(selectedLocationIds.map((location_id) => ({ clinic_id: clinicId, professional_id: professionalId, location_id })));
-        if (error) throw error;
-      }
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['location-professionals'] });
-      toast({ title: 'Unidades do profissional atualizadas' });
-    },
-    onError: (error: Error) => toast({ title: 'Erro', description: error.message, variant: 'destructive' }),
-  });
-
   const createException = useMutation({
     mutationFn: async () => {
       if (!clinicId || !editingLocationId || !exceptionDate) throw new Error('Informe a data da exceção.');
@@ -221,19 +190,12 @@ export default function LocationsTab() {
     onSuccess: async () => queryClient.invalidateQueries({ queryKey: ['location-schedule-exceptions'] }),
   });
 
-  const chooseProfessional = (id: string) => {
-    setProfessionalId(id);
-    const professional = professionalsQuery.data?.find((item) => item.id === id);
-    setSelectedLocationIds((professional?.professional_locations || [])
-      .filter((link) => link.active).map((link) => link.location_id));
-  };
-
   return (
     <Card className="shadow-card">
       <CardHeader className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" />Unidades</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">Endereços, contatos locais, horários e vínculos dos profissionais.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Endereços, contatos locais, horários de funcionamento e configurações de cada unidade.</p>
         </div>
         {canManage && <Button type="button" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Adicionar unidade</Button>}
       </CardHeader>
@@ -268,16 +230,6 @@ export default function LocationsTab() {
             {canManage && <Button type="button" className="mt-4" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Adicionar unidade</Button>}
           </div>
         )}
-
-        <div className="border-t pt-5">
-          <h3 className="font-semibold">Profissional × unidade</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Defina em quais unidades cada profissional realiza atendimentos.</p>
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(220px,320px)_1fr_auto] lg:items-end">
-            <div><Label>Profissional</Label><Select value={professionalId} onValueChange={chooseProfessional}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{professionalsQuery.data?.map((professional) => <SelectItem key={professional.id} value={professional.id}>{professional.full_name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2 sm:grid-cols-2">{locationsQuery.data?.filter((location) => location.active).map((location) => <label key={location.id} className="flex items-center gap-2 rounded-md border p-3"><Checkbox checked={selectedLocationIds.includes(location.id)} onCheckedChange={(checked) => setSelectedLocationIds((ids) => checked ? [...new Set([...ids, location.id])] : ids.filter((id) => id !== location.id))} disabled={!canManage || !professionalId} />{location.name}</label>)}</div>
-            <Button type="button" onClick={() => saveLinks.mutate()} disabled={!canManage || !professionalId || saveLinks.isPending}><Save className="mr-2 h-4 w-4" />Salvar vínculos</Button>
-          </div>
-        </div>
       </CardContent>
 
       <Dialog open={editorOpen} onOpenChange={(open) => open ? setEditorOpen(true) : closeEditor()}>

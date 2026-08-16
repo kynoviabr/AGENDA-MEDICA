@@ -5,7 +5,7 @@ function leadTargetName() {
   return process.env.E2E_LEAD_NAME || 'Agenda teste';
 }
 
-test.describe('Golden Path - Dashboard -> CRM -> Proposta -> Contrato -> CRM', () => {
+test.describe.skip('LEGADO ISOLADO - Dashboard -> CRM -> Proposta -> Contrato -> CRM', () => {
   test('executa o fluxo comercial principal fim a fim', async ({ page }) => {
     const leadName = leadTargetName();
     const leadNameRegex = new RegExp(`^${leadName}$`, 'i');

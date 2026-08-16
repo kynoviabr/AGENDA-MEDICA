@@ -413,12 +413,12 @@ WITH base AS (
     p.full_name AS patient_name,
     p.cpf AS patient_cpf,
     pr.final_amount AS contract_total,
-    COALESCE(u.full_name, u.email, 'Sem responsável') AS seller_name,
+    COALESCE(u.raw_user_meta_data ->> 'full_name', u.email, 'Sem responsável') AS seller_name,
     COALESCE(cpp.prediction_status, 'financeiro_pendente_configuracao') AS prediction_status
   FROM public.contracts c
   JOIN public.patients p ON p.id = c.patient_id
   LEFT JOIN public.proposals pr ON pr.id = c.proposal_id
-  LEFT JOIN public.users u ON u.id = c.created_by
+  LEFT JOIN auth.users u ON u.id = c.created_by
   LEFT JOIN public.contract_payment_plans cpp ON cpp.contract_id = c.id
   WHERE c.clinic_id = p_clinic_id
     AND (p_contract_status IS NULL OR p_contract_status = '' OR c.status::text = p_contract_status OR c.process_status = p_contract_status)
@@ -613,14 +613,14 @@ BEGIN
     py.cpf AS payer_cpf,
     pr.proposal_number,
     pr.final_amount AS contract_total,
-    COALESCE(u.full_name, u.email, 'Sem responsável') AS seller_name,
+    COALESCE(u.raw_user_meta_data ->> 'full_name', u.email, 'Sem responsável') AS seller_name,
     COALESCE(cpp.prediction_status, 'financeiro_pendente_configuracao') AS prediction_status
   INTO v_contract
   FROM public.contracts c
   JOIN public.patients p ON p.id = c.patient_id
   LEFT JOIN public.payers py ON py.id = c.payer_id
   LEFT JOIN public.proposals pr ON pr.id = c.proposal_id
-  LEFT JOIN public.users u ON u.id = c.created_by
+  LEFT JOIN auth.users u ON u.id = c.created_by
   LEFT JOIN public.contract_payment_plans cpp ON cpp.contract_id = c.id
   WHERE c.id = p_contract_id;
 

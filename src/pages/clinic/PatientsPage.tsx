@@ -16,7 +16,6 @@ import { Plus, Search, MoreHorizontal, Phone, Mail, Edit, Eye } from 'lucide-rea
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import PayerSection, { type PayerData } from '@/components/patient/PayerSection';
 import { formatCep, lookupCepAddress } from '@/lib/cep';
 
 interface PatientForm {
@@ -38,11 +37,6 @@ const emptyForm: PatientForm = {
   date_of_birth: '', gender: '', zip_code: '', address: '', city: '', state: '', notes: '',
 };
 
-const defaultPayerData: PayerData = {
-  is_self_payer: true,
-  payer_id: null,
-};
-
 export default function PatientsPage() {
   const { clinicId } = useBranding();
   const { toast } = useToast();
@@ -50,13 +44,9 @@ export default function PatientsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [treatmentFilter, setTreatmentFilter] = useState<string>('all');
-  const [contractDateStart, setContractDateStart] = useState('');
-  const [contractDateEnd, setContractDateEnd] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PatientForm>(emptyForm);
-  const [payerData, setPayerData] = useState<PayerData>(defaultPayerData);
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ['patients', clinicId, search, statusFilter],
     queryFn: async () => {
@@ -78,35 +68,9 @@ export default function PatientsPage() {
     enabled: !!clinicId,
   });
 
-  const { data: patientContracts = [] } = useQuery({
-    queryKey: ['patient-contracts-filter-map', clinicId],
-    queryFn: async () => {
-      if (!clinicId) return [];
-      const { data, error } = await supabase
-        .from('contract_items' as unknown)
-        .select('treatment_id, treatments(name), contracts!inner(patient_id, created_at, clinic_id)')
-        .eq('contracts.clinic_id', clinicId);
-      if (error) throw error;
-      return (data as unknown[]) || [];
-    },
-    enabled: !!clinicId,
-  });
-
   const normalizeDigits = (value?: string | null) => (value || '').replace(/\D/g, '');
   const normalizedSearch = search.trim().toLowerCase();
   const normalizedSearchDigits = normalizeDigits(search);
-
-  const patientContractMeta = patientContracts.reduce<Record<string, { treatments: Set<string>; contractDates: string[] }>>((acc, row: unknown) => {
-    const patientId = row?.contracts?.patient_id;
-    if (!patientId) return acc;
-    if (!acc[patientId]) {
-      acc[patientId] = { treatments: new Set<string>(), contractDates: [] };
-    }
-    const treatmentId = row?.treatment_id;
-    if (treatmentId) acc[patientId].treatments.add(treatmentId);
-    if (row?.contracts?.created_at) acc[patientId].contractDates.push(row.contracts.created_at);
-    return acc;
-  }, {});
 
   const filteredPatients = patients.filter(p => {
     const fullName = (p.full_name || '').toLowerCase();
@@ -120,61 +84,12 @@ export default function PatientsPage() {
       phone.includes(normalizedSearchDigits) ||
       cpf.includes(normalizedSearchDigits);
 
-    if (!matchSearch) return false;
-
-    const contractMeta = patientContractMeta[p.id];
-    if (treatmentFilter !== 'all') {
-      if (!contractMeta || !contractMeta.treatments.has(treatmentFilter)) return false;
-    }
-
-    if (contractDateStart || contractDateEnd) {
-      if (!contractMeta || contractMeta.contractDates.length === 0) return false;
-      const hasDateInRange = contractMeta.contractDates.some((dateValue) => {
-        const date = new Date(dateValue);
-        if (Number.isNaN(date.getTime())) return false;
-        if (contractDateStart && date < new Date(`${contractDateStart}T00:00:00`)) return false;
-        if (contractDateEnd && date > new Date(`${contractDateEnd}T23:59:59`)) return false;
-        return true;
-      });
-      if (!hasDateInRange) return false;
-    }
-
-    return true;
+    return matchSearch;
   });
-
-  const treatmentOptions = patientContracts.reduce<Array<{ id: string; name: string }>>((acc, row: unknown) => {
-    if (!row?.treatment_id || !row?.treatments?.name) return acc;
-    if (acc.some((item) => item.id === row.treatment_id)) return acc;
-    acc.push({ id: row.treatment_id, name: row.treatments.name });
-    return acc;
-  }, []).sort((a, b) => a.name.localeCompare(b.name));
 
   const saveMutation = useMutation({
     mutationFn: async (data: PatientForm) => {
       if (!clinicId) throw new Error('Clínica não encontrada');
-
-      // Handle payer creation if not self-payer
-      let payerId: string | null = null;
-      if (!payerData.is_self_payer) {
-        if (payerData.payer_id) {
-          payerId = payerData.payer_id;
-        } else if (payerData.new_payer) {
-          if (!payerData.new_payer.name.trim()) throw new Error('Nome do pagador é obrigatório');
-          if (!payerData.new_payer.cpf.trim()) throw new Error('CPF do pagador é obrigatório');
-          const { data: newPayer, error: payerError } = await supabase
-            .from('payers' as unknown)
-            .insert({
-              clinic_id: clinicId,
-              name: payerData.new_payer.name.trim(),
-              cpf: payerData.new_payer.cpf.trim(),
-              birth_date: payerData.new_payer.birth_date || null,
-            })
-            .select('id')
-            .single();
-          if (payerError) throw payerError;
-          payerId = (newPayer as unknown).id;
-        }
-      }
 
       const payload: unknown = {
         ...data,
@@ -189,32 +104,12 @@ export default function PatientsPage() {
         city: data.city || null,
         state: data.state || null,
         notes: data.notes || null,
-        is_self_payer: payerData.is_self_payer,
-        payer_id: payerId,
       };
 
       if (editingId) {
         const { error } = await supabase.from('patients').update(payload).eq('id', editingId);
         if (error) throw error;
       } else {
-        // Auto-create payer from patient data if self-payer
-        if (payerData.is_self_payer) {
-          const { data: autoPayer, error: autoErr } = await supabase
-            .from('payers' as unknown)
-            .insert({
-              clinic_id: clinicId,
-              name: data.full_name.trim(),
-              cpf: data.cpf?.trim() || null,
-              email: data.email?.trim() || null,
-              phone: data.phone?.trim() || null,
-              birth_date: data.date_of_birth || null,
-            })
-            .select('id')
-            .single();
-          if (!autoErr && autoPayer) {
-            payload.payer_id = (autoPayer as unknown).id;
-          }
-        }
         const { error } = await supabase.from('patients').insert(payload);
         if (error) throw error;
       }
@@ -224,7 +119,6 @@ export default function PatientsPage() {
       setDialogOpen(false);
       setEditingId(null);
       setForm(emptyForm);
-      setPayerData(defaultPayerData);
       toast({ title: editingId ? 'Paciente atualizado!' : 'Paciente criado!' });
     },
     onError: (err: unknown) => {
@@ -247,17 +141,12 @@ export default function PatientsPage() {
       state: patient.state || '',
       notes: patient.notes || '',
     });
-    setPayerData({
-      is_self_payer: patient.is_self_payer ?? true,
-      payer_id: patient.payer_id || null,
-    });
     setDialogOpen(true);
   };
 
   const openNew = () => {
     setEditingId(null);
     setForm(emptyForm);
-    setPayerData(defaultPayerData);
     setDialogOpen(true);
   };
 
@@ -333,29 +222,6 @@ export default function PatientsPage() {
             <SelectItem value="pending">Pendentes</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={treatmentFilter} onValueChange={setTreatmentFilter}>
-          <SelectTrigger className="w-full sm:w-52">
-            <SelectValue placeholder="Tratamento" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos tratamentos</SelectItem>
-            {treatmentOptions.map((option) => (
-              <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="date"
-          value={contractDateStart}
-          onChange={(event) => setContractDateStart(event.target.value)}
-          className="w-full sm:w-44"
-        />
-        <Input
-          type="date"
-          value={contractDateEnd}
-          onChange={(event) => setContractDateEnd(event.target.value)}
-          className="w-full sm:w-44"
-        />
       </div>
 
       {/* Loading */}
@@ -517,11 +383,10 @@ export default function PatientsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <PayerSection value={payerData} onChange={setPayerData} patientName={form.full_name} />
             <div className="rounded-lg border p-4 space-y-4">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Endereço</h3>
-                <p className="text-xs text-muted-foreground mt-1">Dados complementares usados na ficha do paciente e na formalização do contrato.</p>
+                <p className="text-xs text-muted-foreground mt-1">Dados cadastrais usados pela recepção e pelo agendamento.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">

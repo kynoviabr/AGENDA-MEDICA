@@ -16,13 +16,15 @@ type StageDefinition = {
 };
 
 const defaultStages: StageDefinition[] = [
-  { code: 'new_lead', label: 'Novo Lead', description: 'Entradas novas sem contato.', isSystem: true },
-  { code: 'contacted', label: 'Contato Iniciado', description: 'Primeiro contato em andamento.', isSystem: true },
-  { code: 'scheduled', label: 'Agendado', description: 'Avaliação marcada e acompanhada.', isSystem: true },
-  { code: 'proposal_sent', label: 'Proposta', description: 'Proposta criada ou em negociação.', isSystem: true },
-  { code: 'closed_won', label: 'Fechado', description: 'Venda convertida em paciente.', isSystem: true },
-  { code: 'closed_lost', label: 'Perdido', description: 'Lead encerrado com motivo.', isSystem: true },
+  { code: 'new_lead', label: 'Novo contato', description: 'Contatos recém-chegados.', isSystem: true },
+  { code: 'contacted', label: 'Em atendimento', description: 'Atendimento administrativo iniciado.', isSystem: true },
+  { code: 'proposal_sent', label: 'Interessado', description: 'Interesse confirmado; aguardando próximo passo.', isSystem: true },
+  { code: 'scheduled', label: 'Agendado', description: 'Contato com agendamento.', isSystem: true },
+  { code: 'closed_won', label: 'Follow-up', description: 'Paciente convertido para acompanhamento.', isSystem: true },
+  { code: 'closed_lost', label: 'Perdido', description: 'Contato encerrado.', isSystem: true },
 ];
+
+const productLabels = Object.fromEntries(defaultStages.map((stage) => [stage.code, stage.label]));
 
 function slugifyStageCode(value: string) {
   return value
@@ -62,7 +64,7 @@ export default function KanbanStagesTab() {
         if (!Array.isArray(parsed) || parsed.length === 0) return defaultStages;
         return parsed.map((stage: { code?: string; label?: string; description?: string }) => ({
           code: normalizeStageCode(stage.code),
-          label: stage.label || stage.code || 'Etapa',
+          label: productLabels[normalizeStageCode(stage.code)] || stage.label || stage.code || 'Etapa',
           description: stage.description || '',
           isSystem: !!defaultStages.find((item) => item.code === normalizeStageCode(stage.code)),
         }));
@@ -159,7 +161,7 @@ export default function KanbanStagesTab() {
       {
         code,
         label,
-        description: stageDraft.description.trim() || 'Etapa personalizada do processo comercial.',
+        description: stageDraft.description.trim() || 'Etapa personalizada do atendimento administrativo.',
         isSystem: false,
       },
     ]);
@@ -206,7 +208,7 @@ export default function KanbanStagesTab() {
         <div className="rounded-xl border bg-slate-50/70 p-4">
           <p className="text-sm font-medium text-slate-900">Padrão recomendado</p>
           <p className="mt-1 text-xs text-slate-500">
-            Novo Lead · Contato Iniciado · Agendado · Proposta · Fechado · Perdido
+            Novo contato · Em atendimento · Interessado · Agendado · Follow-up · Perdido
           </p>
           <p className="mt-2 text-xs text-slate-500">
             Leads atualmente distribuídos nas etapas: <span className="font-semibold text-slate-700">{totalLeadsInPipeline}</span>

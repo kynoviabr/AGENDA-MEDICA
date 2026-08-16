@@ -29,7 +29,7 @@ export default function PatientPortalLayout() {
               {clinicName}
             </p>
             <h1 className="font-heading font-semibold text-white text-[15px] leading-tight mt-0.5 truncate">
-              Meu Tratamento
+              Minha Agenda
             </h1>
           </div>
           <div className="flex items-center gap-1">

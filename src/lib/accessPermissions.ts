@@ -40,6 +40,7 @@ export const DISABLED_MVP_PERMISSION_KEYS = [
   'feedback.view',
   'nps.view',
   'satisfaction.view',
+  'reports.view',
 ] as const satisfies readonly MenuPermissionKey[];
 
 const disabledMvpPermissionSet = new Set<MenuPermissionKey>(DISABLED_MVP_PERMISSION_KEYS);
