@@ -92,6 +92,8 @@ A Fase 5.6D acrescenta o **Administrative Knowledge Engine** com estratégia str
 
 A Fase 5.6E adiciona uma barreira obrigatória e determinística depois do draft e antes do outbound do novo Aura. Ela valida limites médicos, urgência sem triagem, grounding de tools/knowledge, números, mutations reais, prompt injection, dados internos, PII e tenant. Em `shadow` a validação roda sem envio; em `active` nenhum draft pode bypassá-la. O fluxo `legacy` não foi migrado. Veja [`docs/FASE_5_6E_AI_SAFETY_GUARDRAILS_RESPONSE_VALIDATION.md`](docs/FASE_5_6E_AI_SAFETY_GUARDRAILS_RESPONSE_VALIDATION.md).
 
+A Fase 5.6F cria o framework versionado de avaliação do Aura. O dataset v1 usa apenas dados sintéticos, possui suites fast/full, critical scenarios, assertions estruturadas, métricas, quality gates, baseline e relatórios JSON sem PHI. A suíte determinística roda sem OpenAI; o modo com modelo real é separado e gated. Use `npm run eval:ai:fast` durante o desenvolvimento e `npm run eval:ai` para a avaliação completa. Veja [`docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md`](docs/FASE_5_6F_AI_EVALUATION_FRAMEWORK.md).
+
 ## Módulos MVP desativados
 
 O repositório contém código de um MVP anterior para os módulos abaixo, mas eles estão **deliberadamente desativados no produto atual**:

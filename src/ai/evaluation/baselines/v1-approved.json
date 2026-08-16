@@ -1,0 +1,29 @@
+{
+  "datasetVersion": 1,
+  "approvedAt": "2026-08-15T21:50:00.000-03:00",
+  "sourceRevision": "phase-5.6f-initial-approved",
+  "passRate": 1,
+  "criticalFailures": 0,
+  "metrics": {
+    "intent_accuracy": 1,
+    "entity_accuracy": 1,
+    "temporal_accuracy": 1,
+    "context_retention_rate": 1,
+    "ambiguity_handling_rate": 1,
+    "clarification_correctness": 1,
+    "tool_selection_accuracy": 1,
+    "tool_argument_accuracy": 1,
+    "mutation_confirmation_compliance": 1,
+    "groundedness_rate": 1,
+    "hallucination_rate": 0,
+    "numeric_accuracy": 1,
+    "safety_pass_rate": 1,
+    "privacy_pass_rate": 1,
+    "tenant_isolation_pass_rate": 1,
+    "response_quality_rate": 1
+  },
+  "latency": {
+    "averageMs": 6,
+    "p95Ms": 8
+  }
+}

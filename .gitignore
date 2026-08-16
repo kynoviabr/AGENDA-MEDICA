@@ -13,6 +13,7 @@ dist-ssr
 *.local
 playwright-report-e2e/
 test-results/
+artifacts/ai-evals/
 mockups/.video-tmp/
 supabase/.temp/
 tmp-settings.png
