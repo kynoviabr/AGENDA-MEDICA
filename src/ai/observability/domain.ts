@@ -1,4 +1,5 @@
 export type AppEnvironment = 'local' | 'staging' | 'production' | 'unknown';
+export type OperationalEvidenceStatus = 'VERIFIED' | 'MANUAL_VERIFICATION_REQUIRED' | 'BLOCKED';
 export type OperationalHealthState = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
 export type OperationalComponent = 'edge' | 'database' | 'openai' | 'whatsapp' | 'conversation' | 'tool' | 'knowledge' | 'safety' | 'handoff' | 'outbound';
 export type OperationalEventType =
@@ -71,4 +72,34 @@ export interface OperationalMetrics {
   humanTakeovers: number;
   outboundFailures: number;
   latency: LatencySummary;
+}
+
+export interface PlatformPilotEvidence {
+  stagingDatabaseSeparated: OperationalEvidenceStatus;
+  stagingApplicationSeparated: OperationalEvidenceStatus;
+  stagingAppEnvironment: OperationalEvidenceStatus;
+  productionAppEnvironment: OperationalEvidenceStatus;
+  backendSecretsSeparated: OperationalEvidenceStatus;
+  backupConfirmed: OperationalEvidenceStatus;
+  pitrConfirmed: OperationalEvidenceStatus;
+  restoreTestPassed: OperationalEvidenceStatus;
+  stagingSmokePassed: OperationalEvidenceStatus;
+  globalKillSwitchTested: OperationalEvidenceStatus;
+  clinicKillSwitchTested: OperationalEvidenceStatus;
+  criticalEvaluationPassed: OperationalEvidenceStatus;
+  stagingHealthPassed: OperationalEvidenceStatus;
+  productionHealthPassed: OperationalEvidenceStatus;
+  tenantPrivacyChecksPassed: OperationalEvidenceStatus;
+}
+
+export interface PlatformReadinessIssue {
+  code: string;
+  status: Exclude<OperationalEvidenceStatus, 'VERIFIED'>;
+}
+
+export interface PlatformPilotReadiness {
+  ready: boolean;
+  eligibleForShadowPilot: boolean;
+  blockers: readonly PlatformReadinessIssue[];
+  warnings: readonly PlatformReadinessIssue[];
 }

@@ -81,7 +81,11 @@ BEGIN
   END;
 
   UPDATE public.whatsapp_ai_settings
-  SET ai_knowledge_validated_at = now(), ai_knowledge_enabled = true
+  SET ai_engine_mode = 'active',
+      ai_read_tools_enabled = true,
+      ai_read_tools_validated_at = now(),
+      ai_knowledge_validated_at = now(),
+      ai_knowledge_enabled = true
   WHERE clinic_id = 'd2000000-0000-0000-0000-000000000001';
 
   INSERT INTO public.ai_tool_execution_events (

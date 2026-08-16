@@ -19,7 +19,8 @@
     "test:release:agenda": "npm run test && npm run test:e2e:smoke && npm run test:e2e:flow",
     "eval:ai:fast": "vite-node scripts/run-ai-evaluation.ts fast",
     "eval:ai": "vite-node scripts/run-ai-evaluation.ts full",
-    "eval:ai:model": "vite-node scripts/run-ai-evaluation.ts model"
+    "eval:ai:model": "vite-node scripts/run-ai-evaluation.ts model",
+    "smoke:staging": "vite-node scripts/staging-smoke-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

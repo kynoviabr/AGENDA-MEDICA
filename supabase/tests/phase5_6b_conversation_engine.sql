@@ -109,12 +109,14 @@ BEGIN
     RAISE EXCEPTION 'TEST_FAILED: conversation state leaked across clinics';
   END IF;
 
-  UPDATE public.whatsapp_ai_conversations SET status = 'handoff'
-  WHERE id = 'a4000000-0000-0000-0000-000000000001';
-  IF NOT EXISTS (
-    SELECT 1 FROM public.whatsapp_ai_conversations
-    WHERE id = 'a4000000-0000-0000-0000-000000000001' AND status = 'handoff'
-  ) THEN RAISE EXCEPTION 'TEST_FAILED: own administrative update was blocked'; END IF;
+  -- Since 5.6G/5.7, lifecycle changes are RPC-only. A staff member may read
+  -- the conversation but cannot bypass ownership/audit with a direct UPDATE.
+  BEGIN
+    UPDATE public.whatsapp_ai_conversations SET status = 'handoff'
+    WHERE id = 'a4000000-0000-0000-0000-000000000001';
+    RAISE EXCEPTION 'TEST_FAILED: direct administrative lifecycle update was accepted';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
 
   BEGIN
     UPDATE public.whatsapp_ai_conversations SET conversation_state = conversation_state

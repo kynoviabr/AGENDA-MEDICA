@@ -51,3 +51,9 @@ Fluxo: detectar → conter → desligar feature afetada → investigar por corre
 ## Smoke seguro
 
 Staging usa clínica, contato e dados exclusivamente sintéticos. Valide webhook assinado, inbound, conversation, knowledge, disponibilidade read-only, safety, handoff e outbound. Production começa com liveness/readiness e consultas não destrutivas; não crie appointment real automaticamente.
+
+## Fechamento de blockers 5.7.1
+
+Antes de qualquer Shadow Pilot, consulte `AURA_PILOT_BLOCKER_REGISTER.md`. O comando `npm run smoke:staging` exige refs/endpoints separados e retorna falha para configuração ausente. Um resultado local/eval verde não substitui staging, backup ou restore.
+
+Sequência obrigatória: provisionar staging → separar secrets → confirmar migrations → usar somente seed sintético → executar smoke → testar kill switches/rollback → revisar logs → confirmar backup/PITR → restaurar em projeto isolado → calcular platform readiness. `eligibleForShadowPilot=true` nunca inicia o piloto automaticamente.

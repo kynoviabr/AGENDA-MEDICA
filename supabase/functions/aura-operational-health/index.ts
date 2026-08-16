@@ -17,7 +17,8 @@ serve(async (req) => {
   const environment = parseAppEnvironment(Deno.env.get("APP_ENV"));
   const url = new URL(req.url);
   if (req.method === "GET" && url.searchParams.get("mode") === "liveness") {
-    return json({ ok: true, service: "aura-operational-health", state: "healthy", environment });
+    const healthy = environment !== 'unknown';
+    return json({ ok: healthy, status: healthy ? "healthy" : "unhealthy", service: "aura-operational-health", state: healthy ? "healthy" : "unhealthy", environment }, healthy ? 200 : 503);
   }
   if (req.method !== "POST") return json({ ok: false, reason: "method_not_allowed" }, 405);
 
