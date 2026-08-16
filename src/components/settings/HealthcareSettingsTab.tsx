@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgeDollarSign, CalendarClock, Link2, Save, ShieldCheck } from 'lucide-react';
+import { BadgeDollarSign, CalendarClock, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
-import HealthInsurancesPage from '@/pages/clinic/HealthInsurancesPage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,12 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-type Section = 'insurances' | 'private-prices' | 'links' | 'durations';
+type Section = 'private-prices' | 'durations';
 
 const sections = [
-  { id: 'insurances' as const, label: 'Cadastro de convênios', icon: ShieldCheck },
   { id: 'private-prices' as const, label: 'Consulta particular', icon: BadgeDollarSign },
-  { id: 'links' as const, label: 'Profissional × convênio', icon: Link2 },
   { id: 'durations' as const, label: 'Duração das consultas', icon: CalendarClock },
 ];
 
@@ -27,9 +23,8 @@ export default function HealthcareSettingsTab() {
   const { clinicId } = useUserRole();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [section, setSection] = useState<Section>('insurances');
+  const [section, setSection] = useState<Section>('private-prices');
   const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
-  const [selectedInsuranceIds, setSelectedInsuranceIds] = useState<string[]>([]);
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
 
@@ -43,22 +38,6 @@ export default function HealthcareSettingsTab() {
         .eq('clinic_id', clinicId)
         .eq('status', 'active')
         .order('full_name');
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!clinicId,
-  });
-
-  const { data: insurances = [], isLoading: loadingInsurances } = useQuery({
-    queryKey: ['healthcare-settings-insurances', clinicId],
-    queryFn: async () => {
-      if (!clinicId) return [];
-      const { data, error } = await supabase
-        .from('health_insurances')
-        .select('id, name, status, professional_health_insurances(professional_id, status)')
-        .eq('clinic_id', clinicId)
-        .eq('status', 'active')
-        .order('name');
       if (error) throw error;
       return data || [];
     },
@@ -80,40 +59,6 @@ export default function HealthcareSettingsTab() {
     },
     onError: (error: Error) => toast({ title: 'Não foi possível salvar', description: error.message, variant: 'destructive' }),
   });
-
-  const linksMutation = useMutation({
-    mutationFn: async () => {
-      if (!clinicId || !selectedProfessionalId) throw new Error('Selecione um profissional');
-      if (selectedInsuranceIds.length) {
-        const { error } = await supabase.from('professional_health_insurances').upsert(
-          selectedInsuranceIds.map(insuranceId => ({ clinic_id: clinicId, professional_id: selectedProfessionalId, health_insurance_id: insuranceId })),
-          { onConflict: 'health_insurance_id,professional_id' },
-        );
-        if (error) throw error;
-      }
-      let deleteQuery = supabase.from('professional_health_insurances').delete().eq('clinic_id', clinicId).eq('professional_id', selectedProfessionalId);
-      if (selectedInsuranceIds.length) deleteQuery = deleteQuery.not('health_insurance_id', 'in', `(${selectedInsuranceIds.join(',')})`);
-      const { error: deleteError } = await deleteQuery;
-      if (deleteError) throw deleteError;
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['healthcare-settings-insurances'] }),
-        queryClient.invalidateQueries({ queryKey: ['health-insurances'] }),
-      ]);
-      toast({ title: 'Convênios do profissional atualizados' });
-    },
-    onError: (error: Error) => toast({ title: 'Não foi possível salvar os vínculos', description: error.message, variant: 'destructive' }),
-  });
-
-  const selectProfessional = (professionalId: string) => {
-    setSelectedProfessionalId(professionalId);
-    setSelectedInsuranceIds(
-      insurances
-        .filter(insurance => insurance.professional_health_insurances.some(link => link.professional_id === professionalId && link.status === 'active'))
-        .map(insurance => insurance.id),
-    );
-  };
 
   const { data: durationSettings } = useQuery({
     queryKey: ['professional-appointment-durations', clinicId, selectedProfessionalId],
@@ -171,8 +116,6 @@ export default function HealthcareSettingsTab() {
       </aside>
 
       <div className="min-w-0">
-        {section === 'insurances' && <HealthInsurancesPage embedded manageProfessionalLinks={false} />}
-
         {section === 'private-prices' && (
           <Card>
             <CardHeader><CardTitle className="text-lg">Valor da consulta particular</CardTitle><p className="text-sm text-muted-foreground">Defina o valor padrão cobrado por cada profissional.</p></CardHeader>
@@ -194,25 +137,6 @@ export default function HealthcareSettingsTab() {
                       ))}
                     </TableBody>
                   </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {section === 'links' && (
-          <Card>
-            <CardHeader><CardTitle className="text-lg">Vínculo profissional × convênio</CardTitle><p className="text-sm text-muted-foreground">Selecione o profissional e marque todos os convênios que ele atende.</p></CardHeader>
-            <CardContent className="space-y-5">
-              <div className="max-w-md space-y-2"><Label>Profissional</Label><Select value={selectedProfessionalId} onValueChange={selectProfessional}><SelectTrigger><SelectValue placeholder="Selecione um profissional" /></SelectTrigger><SelectContent>{professionals.map(professional => <SelectItem key={professional.id} value={professional.id}>{professional.full_name}{professional.specialty ? ` — ${professional.specialty}` : ''}</SelectItem>)}</SelectContent></Select></div>
-              {selectedProfessionalId && (
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {loadingInsurances ? <p className="text-sm text-muted-foreground">Carregando convênios...</p> : insurances.map(insurance => (
-                      <label key={insurance.id} className="flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 hover:bg-muted/50"><Checkbox checked={selectedInsuranceIds.includes(insurance.id)} onCheckedChange={checked => setSelectedInsuranceIds(current => checked ? Array.from(new Set([...current, insurance.id])) : current.filter(id => id !== insurance.id))} /><span className="text-sm font-medium">{insurance.name}</span></label>
-                    ))}
-                  </div>
-                  <Button onClick={() => linksMutation.mutate()} disabled={linksMutation.isPending}><Save className="mr-2 h-4 w-4" />{linksMutation.isPending ? 'Salvando...' : 'Salvar vínculos'}</Button>
                 </div>
               )}
             </CardContent>

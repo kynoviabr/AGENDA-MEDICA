@@ -11,11 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Settings, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, Briefcase, Building2, UserCog, Lock, MessageSquare, HeartHandshake } from 'lucide-react';
-import CategoriesTab from '@/components/settings/CategoriesTab';
+import { Settings, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, UserCog, Lock, MessageSquare, HeartHandshake, Link2, ListTree } from 'lucide-react';
 import ProfessionalsTab from '@/components/settings/ProfessionalsTab';
-import RolesTab from '@/components/settings/RolesTab';
-import ClassEntitiesTab from '@/components/settings/ClassEntitiesTab';
 import KanbanStagesTab from '@/components/settings/KanbanStagesTab';
 import PatientAppAccessTab from '@/components/settings/PatientAppAccessTab';
 import AccessGroupsTab from '@/components/settings/AccessGroupsTab';
@@ -23,6 +20,8 @@ import WhatsAppAiSettingsTab from '@/components/settings/WhatsAppAiSettingsTab';
 import HealthcareSettingsTab from '@/components/settings/HealthcareSettingsTab';
 import LocationsTab from '@/components/settings/LocationsTab';
 import ProfessionalRulesTab from '@/components/settings/ProfessionalRulesTab';
+import ProfessionalLinksTab from '@/components/settings/ProfessionalLinksTab';
+import RegistrationsTab from '@/components/settings/RegistrationsTab';
 import ServicesPage from '@/pages/clinic/ServicesPage';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -36,7 +35,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get('section') === 'healthcare' ? 'healthcare' : 'general';
+  const requestedSection = searchParams.get('section');
+  const settingsSections = ['general', 'professionals', 'treatments', 'links', 'healthcare', 'professional-rules', 'whatsapp-ai', 'crm-kanban', 'team', 'registrations'];
+  const initialTab = settingsSections.includes(requestedSection || '') ? requestedSection! : 'general';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [linksProfessionalId, setLinksProfessionalId] = useState(searchParams.get('professional') || undefined);
 
   // Clinic info
   const [name, setName] = useState('');
@@ -213,19 +216,18 @@ export default function SettingsPage() {
     <div>
       <PageHeader title="Configurações" description="Gerencie sua clínica" />
 
-      <Tabs defaultValue={initialTab} className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-3 xl:grid-cols-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-3 lg:grid-cols-5">
           <TabsTrigger value="general"><Settings className="w-4 h-4 mr-1" />Geral</TabsTrigger>
-          <TabsTrigger value="roles"><Briefcase className="w-4 h-4 mr-1" />Cargos</TabsTrigger>
-          <TabsTrigger value="entities"><Building2 className="w-4 h-4 mr-1" />Conselhos</TabsTrigger>
-          <TabsTrigger value="categories"><Tags className="w-4 h-4 mr-1" />Categorias</TabsTrigger>
-          <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
-          <TabsTrigger value="professional-rules"><Settings className="w-4 h-4 mr-1" />Regras</TabsTrigger>
-          <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
           <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Serviços</TabsTrigger>
+          <TabsTrigger value="links"><Link2 className="w-4 h-4 mr-1" />Vínculos</TabsTrigger>
+          <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
+          <TabsTrigger value="professional-rules"><Settings className="w-4 h-4 mr-1" />Regras</TabsTrigger>
           <TabsTrigger value="whatsapp-ai"><MessageSquare className="w-4 h-4 mr-1" />WhatsApp IA</TabsTrigger>
           <TabsTrigger value="crm-kanban"><Settings className="w-4 h-4 mr-1" />CRM Kanban</TabsTrigger>
+          <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
+          <TabsTrigger value="registrations"><ListTree className="w-4 h-4 mr-1" />Cadastros</TabsTrigger>
         </TabsList>
 
         {/* ===== GENERAL ===== */}
@@ -487,21 +489,21 @@ export default function SettingsPage() {
           <ServicesPage embedded />
         </TabsContent>
 
+        <TabsContent value="links">
+          <ProfessionalLinksTab initialProfessionalId={linksProfessionalId} />
+        </TabsContent>
+
         <TabsContent value="whatsapp-ai">
           <WhatsAppAiSettingsTab />
         </TabsContent>
 
         {/* ===== CATEGORIES ===== */}
-        <TabsContent value="categories">
-          <CategoriesTab />
-        </TabsContent>
-
         <TabsContent value="crm-kanban">
           <KanbanStagesTab />
         </TabsContent>
 
         <TabsContent value="professionals">
-          <ProfessionalsTab />
+          <ProfessionalsTab onManageLinks={(professionalId) => { setLinksProfessionalId(professionalId); setActiveTab('links'); }} />
         </TabsContent>
 
         <TabsContent value="professional-rules"><ProfessionalRulesTab /></TabsContent>
@@ -510,12 +512,8 @@ export default function SettingsPage() {
           <HealthcareSettingsTab />
         </TabsContent>
 
-        <TabsContent value="roles">
-          <RolesTab />
-        </TabsContent>
-
-        <TabsContent value="entities">
-          <ClassEntitiesTab />
+        <TabsContent value="registrations">
+          <RegistrationsTab />
         </TabsContent>
       </Tabs>
     </div>

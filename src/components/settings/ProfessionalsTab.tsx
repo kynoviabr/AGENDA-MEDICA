@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useProfessionals, Professional } from '@/hooks/useProfessionals';
+import { useProfessionals } from '@/hooks/useProfessionals';
 import { useRoles } from '@/hooks/useRoles';
 import { useClassEntities } from '@/hooks/useClassEntities';
 import { useProfessionalTreatments } from '@/hooks/useProfessionalTreatments';
@@ -14,16 +14,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Loader2, UserCheck, UserX, Search, Users, Stethoscope, ShieldCheck, Building2, AlertTriangle, ArrowUpDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Loader2, UserCheck, UserX, Search, Users, Stethoscope, ShieldCheck, Building2, AlertTriangle, ArrowUpDown, ChevronLeft, ChevronRight, X, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  describeLocationDependencies,
-  getProfessionalLocationChanges,
-  type LocationDependencyCounts,
-  type ProfessionalLocationLinkState,
-} from './professionalLocationLinks';
 
 function formatCPF(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -66,26 +59,28 @@ interface LocationOption {
   active: boolean;
 }
 
-interface ProfessionalLocationLink extends ProfessionalLocationLinkState {
+interface ProfessionalLocationLink {
   id: string;
   professionalId: string;
+  locationId: string;
+  active: boolean;
 }
 
-export default function ProfessionalsTab() {
+interface ProfessionalsTabProps {
+  onManageLinks?: (professionalId: string) => void;
+}
+
+export default function ProfessionalsTab({ onManageLinks }: ProfessionalsTabProps) {
   const { items, loading, create, toggleStatus } = useProfessionals();
   const { items: roles } = useRoles();
   const { items: entities } = useClassEntities();
-  const { items: profTreatments, create: linkTreatment } = useProfessionalTreatments();
+  const { items: profTreatments } = useProfessionalTreatments();
   const { clinicId, role: currentUserRole } = useUserRole();
-  const canManageLocations = currentUserRole === 'admin';
+  const canManageLinks = currentUserRole === 'admin';
 
   const [treatments, setTreatments] = useState<TreatmentOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [professionalLocationLinks, setProfessionalLocationLinks] = useState<ProfessionalLocationLink[]>([]);
-  const [selectedCreateLocationIds, setSelectedCreateLocationIds] = useState<string[]>([]);
-  const [locationEditorProfessional, setLocationEditorProfessional] = useState<Professional | null>(null);
-  const [selectedEditorLocationIds, setSelectedEditorLocationIds] = useState<string[]>([]);
-  const [savingLocations, setSavingLocations] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cpfError, setCpfError] = useState('');
@@ -93,7 +88,6 @@ export default function ProfessionalsTab() {
     full_name: '', cpf: '', email: '', phone: '', specialty: '',
     registration_number: '', user_id: '', role_id: '', class_entity_id: '',
   });
-  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
   const [additionalPhones, setAdditionalPhones] = useState<string[]>([]);
 
   // Filters
@@ -146,33 +140,6 @@ export default function ProfessionalsTab() {
     setCpfError(digits.length === 11 && !isValidCPF(digits) ? 'CPF inválido' : '');
   };
 
-  const toggleLocationSelection = (
-    locationId: string,
-    setSelection: React.Dispatch<React.SetStateAction<string[]>>,
-  ) => {
-    setSelection(current => current.includes(locationId)
-      ? current.filter(id => id !== locationId)
-      : [...current, locationId]);
-  };
-
-  const createProfessionalLocationLinks = async (professionalId: string, locationIds: string[]) => {
-    if (!clinicId || locationIds.length === 0) return true;
-    const { error } = await supabase.from('professional_locations').upsert(
-      locationIds.map(locationId => ({
-        clinic_id: clinicId,
-        professional_id: professionalId,
-        location_id: locationId,
-        active: true,
-      })),
-      { onConflict: 'professional_id,location_id' },
-    );
-    if (error) {
-      toast.error('O profissional foi criado, mas não foi possível vincular as unidades. Tente novamente na lista de profissionais.');
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) { toast.error('Informe o nome completo do profissional'); return; }
@@ -191,99 +158,12 @@ export default function ProfessionalsTab() {
       role_id: form.role_id, class_entity_id: form.class_entity_id, status: 'active',
     });
     if (result) {
-      for (const tid of selectedTreatments) await linkTreatment(result.id, tid);
-      const linkedLocations = await createProfessionalLocationLinks(result.id, selectedCreateLocationIds);
-      if (selectedCreateLocationIds.length === 0) {
-        toast.warning('Profissional cadastrado sem unidade. A disponibilidade permanecerá bloqueada até que uma unidade seja vinculada.');
-      } else if (linkedLocations) {
-        await loadLocationData();
-      }
+      toast.warning('Profissional cadastrado sem vínculos operacionais. Configure unidades, serviços e horários na aba Vínculos.');
       setOpen(false);
       setForm({ full_name: '', cpf: '', email: '', phone: '', specialty: '', registration_number: '', user_id: '', role_id: '', class_entity_id: '' });
-      setSelectedTreatments([]); setSelectedCreateLocationIds([]); setAdditionalPhones([]); setCpfError('');
+      setAdditionalPhones([]); setCpfError('');
     }
     setSaving(false);
-  };
-
-  const openLocationEditor = (professional: Professional) => {
-    setLocationEditorProfessional(professional);
-    setSelectedEditorLocationIds(professionalLocationLinks
-      .filter(link => link.professionalId === professional.id && link.active)
-      .map(link => link.locationId));
-  };
-
-  const getLocationDependencyCounts = async (
-    professionalId: string,
-    locationId: string,
-  ): Promise<LocationDependencyCounts> => {
-    if (!clinicId) throw new Error('Clínica não identificada.');
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const today = nowIso.slice(0, 10);
-    const [appointments, availability, blocks, exceptions] = await Promise.all([
-      supabase.from('appointments').select('id', { count: 'exact', head: true })
-        .eq('clinic_id', clinicId).eq('professional_id', professionalId).eq('location_id', locationId)
-        .gte('start_time', nowIso).in('status', ['scheduled', 'confirmed', 'in_progress']),
-      supabase.from('professional_availability').select('id', { count: 'exact', head: true })
-        .eq('clinic_id', clinicId).eq('professional_id', professionalId).eq('location_id', locationId).eq('is_active', true),
-      supabase.from('appointment_blocks').select('id', { count: 'exact', head: true })
-        .eq('clinic_id', clinicId).eq('professional_id', professionalId).eq('location_id', locationId).gte('end_at', nowIso),
-      supabase.from('scheduling_exceptions').select('id', { count: 'exact', head: true })
-        .eq('clinic_id', clinicId).eq('professional_id', professionalId).eq('location_id', locationId).gte('exception_date', today),
-    ]);
-    const error = appointments.error || availability.error || blocks.error || exceptions.error;
-    if (error) throw new Error('Não foi possível validar as dependências da unidade. Nenhum vínculo foi alterado.');
-    return {
-      futureAppointments: appointments.count || 0,
-      activeAvailability: availability.count || 0,
-      futureBlocks: blocks.count || 0,
-      futureExceptions: exceptions.count || 0,
-    };
-  };
-
-  const saveProfessionalLocations = async () => {
-    if (!clinicId || !locationEditorProfessional || !canManageLocations) return;
-    setSavingLocations(true);
-    try {
-      const existing = professionalLocationLinks
-        .filter(link => link.professionalId === locationEditorProfessional.id)
-        .map(link => ({ locationId: link.locationId, active: link.active }));
-      const changes = getProfessionalLocationChanges(existing, selectedEditorLocationIds);
-
-      for (const locationId of changes.deactivate) {
-        const dependencies = await getLocationDependencyCounts(locationEditorProfessional.id, locationId);
-        const dependencyDescriptions = describeLocationDependencies(dependencies);
-        if (dependencyDescriptions.length > 0) {
-          const locationName = locations.find(location => location.id === locationId)?.name || 'esta unidade';
-          throw new Error(`Não é possível remover ${locationName}: existem ${dependencyDescriptions.join(', ')}. Remova ou encerre essas dependências primeiro.`);
-        }
-      }
-
-      if (changes.activate.length > 0) {
-        const activated = await createProfessionalLocationLinks(locationEditorProfessional.id, changes.activate);
-        if (!activated) throw new Error('Não foi possível ativar todos os vínculos de unidade.');
-      }
-      if (changes.deactivate.length > 0) {
-        const { error } = await supabase.from('professional_locations').update({ active: false })
-          .eq('clinic_id', clinicId)
-          .eq('professional_id', locationEditorProfessional.id)
-          .in('location_id', changes.deactivate);
-        if (error) throw new Error('Não foi possível remover os vínculos selecionados. Nenhum dado foi excluído.');
-      }
-
-      await loadLocationData();
-      setLocationEditorProfessional(null);
-      setSelectedEditorLocationIds([]);
-      if (selectedEditorLocationIds.length === 0) {
-        toast.warning('Profissional sem unidade. A disponibilidade permanecerá bloqueada até um novo vínculo.');
-      } else {
-        toast.success('Unidades de atendimento atualizadas.');
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar as unidades.');
-    } finally {
-      setSavingLocations(false);
-    }
   };
 
   const handleConfirmToggle = async () => {
@@ -513,59 +393,8 @@ export default function ProfessionalsTab() {
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Tratamentos Realizados</p>
-                    <Separator />
-                    <div className="border rounded-lg p-3 max-h-44 overflow-y-auto space-y-1.5 bg-muted/30">
-                      {treatments.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-3">Nenhum tratamento ativo.</p>
-                      ) : treatments.map(t => (
-                        <label key={t.id} className="flex items-center gap-2.5 text-sm cursor-pointer hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
-                          <Checkbox checked={selectedTreatments.includes(t.id)} onCheckedChange={() => setSelectedTreatments(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} />
-                          {t.name}
-                        </label>
-                      ))}
-                    </div>
-                    {selectedTreatments.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">{selectedTreatments.length} selecionado(s)</Badge>
-                        <Button type="button" variant="ghost" size="sm" className="text-xs h-6" onClick={() => setSelectedTreatments([])}>Limpar</Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Building2 className="w-4 h-4 text-primary" />Unidades de atendimento</p>
-                    <Separator />
-                    <p className="text-xs text-muted-foreground">Defina em quais unidades este profissional realiza atendimentos. Selecione uma ou mais unidades.</p>
-                    {locations.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                        Nenhuma unidade cadastrada. Cadastre uma unidade em Configurações → Geral antes de definir onde o profissional atende.
-                      </div>
-                    ) : (
-                      <div className="border rounded-lg p-3 max-h-44 overflow-y-auto space-y-1.5 bg-muted/30">
-                        {locations.map(location => {
-                          const checked = selectedCreateLocationIds.includes(location.id);
-                          return (
-                            <label key={location.id} className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm ${location.active ? 'cursor-pointer hover:bg-muted/50' : 'cursor-not-allowed opacity-60'}`}>
-                              <Checkbox
-                                checked={checked}
-                                disabled={!canManageLocations || !location.active}
-                                onCheckedChange={() => toggleLocationSelection(location.id, setSelectedCreateLocationIds)}
-                              />
-                              <span className="flex-1">{location.name}</span>
-                              {location.is_primary && <Badge variant="secondary" className="text-[10px]">Principal</Badge>}
-                              {!location.active && <Badge variant="outline" className="text-[10px]">Inativa</Badge>}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {locations.length > 0 && selectedCreateLocationIds.length === 0 && (
-                      <p className="text-xs text-amber-700 flex items-start gap-1.5">
-                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        Este profissional ficará sem unidade e não terá disponibilidade válida.
-                      </p>
-                    )}
+                  <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                    Após cadastrar, configure unidades, serviços, convênios e horário padrão em Configurações → Vínculos.
                   </div>
                   <Separator />
                   <Button type="submit" disabled={saving || !form.role_id || !form.class_entity_id} className="w-full gradient-primary text-primary-foreground shadow-glow">
@@ -698,8 +527,8 @@ export default function ProfessionalsTab() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Button size="sm" variant="outline" disabled={!canManageLocations} onClick={() => openLocationEditor(p)}>
-                          <Building2 className="w-4 h-4 mr-1" />Unidades
+                        <Button size="sm" variant="outline" disabled={!canManageLinks} onClick={() => onManageLinks?.(p.id)}>
+                          <Link2 className="w-4 h-4 mr-1" />Gerenciar vínculos
                         </Button>
                         <Button size="sm" variant={isInactive ? 'default' : 'outline'}
                           className={isInactive ? '' : 'text-destructive border-destructive/30 hover:bg-destructive/10'}
@@ -748,64 +577,6 @@ export default function ProfessionalsTab() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog
-        open={Boolean(locationEditorProfessional)}
-        onOpenChange={isOpen => {
-          if (!isOpen && !savingLocations) {
-            setLocationEditorProfessional(null);
-            setSelectedEditorLocationIds([]);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />Unidades de atendimento
-            </DialogTitle>
-            <DialogDescription>
-              Defina em quais unidades {locationEditorProfessional?.full_name} realiza atendimentos. Selecione uma ou mais unidades.
-            </DialogDescription>
-          </DialogHeader>
-          {locations.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              Nenhuma unidade cadastrada. Cadastre uma unidade em Configurações → Geral antes de definir onde o profissional atende.
-            </div>
-          ) : (
-            <div className="space-y-2 rounded-lg border p-3">
-              {locations.map(location => {
-                const checked = selectedEditorLocationIds.includes(location.id);
-                const cannotAddInactive = !location.active && !checked;
-                return (
-                  <label key={location.id} className={`flex items-center gap-3 rounded-md px-2 py-2 ${cannotAddInactive ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-muted/50'}`}>
-                    <Checkbox
-                      checked={checked}
-                      disabled={!canManageLocations || cannotAddInactive || savingLocations}
-                      onCheckedChange={() => toggleLocationSelection(location.id, setSelectedEditorLocationIds)}
-                    />
-                    <span className="flex-1 text-sm">{location.name}</span>
-                    {location.is_primary && <Badge variant="secondary" className="text-[10px]">Principal</Badge>}
-                    {!location.active && <Badge variant="outline" className="text-[10px]">Inativa</Badge>}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-          {locations.length > 0 && selectedEditorLocationIds.length === 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              Sem uma unidade vinculada, o profissional não terá disponibilidade válida para novos agendamentos.
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={savingLocations} onClick={() => setLocationEditorProfessional(null)}>Cancelar</Button>
-            <Button disabled={savingLocations || !canManageLocations || locations.length === 0} onClick={() => void saveProfessionalLocations()}>
-              {savingLocations && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Salvar unidades
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Confirmation dialog */}
       <AlertDialog open={!!confirmToggle} onOpenChange={o => !o && setConfirmToggle(null)}>

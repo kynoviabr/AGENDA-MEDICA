@@ -55,7 +55,10 @@ vi.mock('@/components/settings/AccessGroupsTab', () => ({ default: () => null })
 vi.mock('@/components/settings/WhatsAppAiSettingsTab', () => ({ default: () => null }));
 vi.mock('@/components/settings/HealthcareSettingsTab', () => ({ default: () => null }));
 vi.mock('@/components/settings/ProfessionalRulesTab', () => ({ default: () => null }));
+vi.mock('@/components/settings/ProfessionalLinksTab', () => ({ default: () => <div>Central de vínculos</div> }));
+vi.mock('@/components/settings/RegistrationsTab', () => ({ default: () => <div>Cadastros auxiliares</div> }));
 vi.mock('@/pages/clinic/TreatmentsPage', () => ({ default: () => null }));
+vi.mock('@/pages/clinic/ServicesPage', () => ({ default: () => null }));
 
 describe('Settings General UX', () => {
   beforeEach(() => {
@@ -83,8 +86,13 @@ describe('Settings General UX', () => {
     expect(screen.getByRole('button', { name: 'Editar unidade' })).toBeInTheDocument();
     expect(screen.queryByText('Profissional × unidade')).not.toBeInTheDocument();
     const settingsTabs = screen.getByRole('tablist');
-    expect(settingsTabs).toHaveClass('grid', 'grid-cols-2', 'sm:grid-cols-3', 'xl:grid-cols-6');
-    expect(within(settingsTabs).getAllByRole('tab')).toHaveLength(11);
+    expect(settingsTabs).toHaveClass('grid', 'grid-cols-2', 'sm:grid-cols-3', 'lg:grid-cols-5');
+    expect(within(settingsTabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Geral', 'Profissionais', 'Serviços', 'Vínculos', 'Atendimento', 'Regras', 'WhatsApp IA', 'CRM Kanban', 'Segurança e Acesso', 'Cadastros',
+    ]);
+    expect(within(settingsTabs).queryByRole('tab', { name: 'Cargos' })).not.toBeInTheDocument();
+    expect(within(settingsTabs).queryByRole('tab', { name: 'Conselhos' })).not.toBeInTheDocument();
+    expect(within(settingsTabs).queryByRole('tab', { name: 'Categorias' })).not.toBeInTheDocument();
   });
 
   it('does not expose the legacy clinic address or a duplicate Units tab', async () => {
