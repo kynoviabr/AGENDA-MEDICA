@@ -132,6 +132,7 @@ export type Database = {
           insurance_id: string | null
           keywords: string[]
           location_id: string | null
+          patient_visible: boolean
           priority: number
           professional_id: string | null
           question: string
@@ -154,6 +155,7 @@ export type Database = {
           insurance_id?: string | null
           keywords?: string[]
           location_id?: string | null
+          patient_visible?: boolean
           priority?: number
           professional_id?: string | null
           question: string
@@ -176,6 +178,7 @@ export type Database = {
           insurance_id?: string | null
           keywords?: string[]
           location_id?: string | null
+          patient_visible?: boolean
           priority?: number
           professional_id?: string | null
           question?: string
@@ -319,6 +322,63 @@ export type Database = {
           },
           {
             foreignKeyName: "ai_knowledge_answer_events_conversation_clinic_fkey"
+            columns: ["conversation_id", "clinic_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_conversations"
+            referencedColumns: ["id", "clinic_id"]
+          },
+        ]
+      }
+      ai_safety_events: {
+        Row: {
+          categories: string[]
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at: string
+          disposition: string
+          grounded: boolean
+          id: string
+          latency_ms: number
+          occurred_at: string
+          validator: string
+        }
+        Insert: {
+          categories?: string[]
+          clinic_id: string
+          conversation_id: string
+          correlation_id: string
+          created_at?: string
+          disposition: string
+          grounded: boolean
+          id?: string
+          latency_ms: number
+          occurred_at?: string
+          validator: string
+        }
+        Update: {
+          categories?: string[]
+          clinic_id?: string
+          conversation_id?: string
+          correlation_id?: string
+          created_at?: string
+          disposition?: string
+          grounded?: boolean
+          id?: string
+          latency_ms?: number
+          occurred_at?: string
+          validator?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_safety_events_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_safety_events_conversation_clinic_fkey"
             columns: ["conversation_id", "clinic_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_ai_conversations"
@@ -5264,6 +5324,14 @@ export type Database = {
       }
     }
     Functions: {
+      administrative_text_array_is_valid: {
+        Args: {
+          maximum_item_length: number
+          maximum_items: number
+          values_to_check: string[]
+        }
+        Returns: boolean
+      }
       assert_appointment_slot: {
         Args: {
           p_clinic_id: string

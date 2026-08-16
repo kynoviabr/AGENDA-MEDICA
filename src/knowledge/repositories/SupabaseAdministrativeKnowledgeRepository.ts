@@ -103,7 +103,8 @@ export class SupabaseAdministrativeKnowledgeRepository implements Administrative
       valid_from: string | null; valid_until: string | null;
     }>>(this.client.from('administrative_knowledge_entries')
       .select('id,topic,scope,location_id,professional_id,service_id,insurance_id,question,answer,keywords,priority,revision,verified_at,valid_from,valid_until')
-      .eq('clinic_id', context.clinicId).eq('status', 'published').order('priority', { ascending: false }).limit(Math.min(100, Math.max(1, limit))));
+      .eq('clinic_id', context.clinicId).eq('status', 'published').eq('patient_visible', true)
+      .order('priority', { ascending: false }).limit(Math.min(100, Math.max(1, limit))));
     return rows.map((row) => ({
       id: row.id, topic: row.topic, scope: row.scope, locationId: row.location_id || undefined,
       professionalId: row.professional_id || undefined, serviceId: row.service_id || undefined,

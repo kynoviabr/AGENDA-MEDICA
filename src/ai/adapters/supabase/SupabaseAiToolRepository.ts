@@ -1,6 +1,7 @@
 import type { AiToolAuditEvent, AiToolAuditRecorder, AiToolMutationGuard, AiToolRequest } from '../../tools/domain.ts';
 import type { AiExecutionContext } from '../../domain/models.ts';
 import type { AiKnowledgeAuditEvent, AiKnowledgeAuditRecorder } from '../../tools/AdministrativeKnowledgeToolExecutor.ts';
+import type { AiSafetyAuditEvent, AiSafetyAuditRecorder } from '../../safety/domain.ts';
 import { AiValidationError } from '../../errors/AiError.ts';
 import type { AiSupabaseClientLike } from './SupabaseAiRuntimeRepository.ts';
 
@@ -43,5 +44,18 @@ export class SupabaseAiKnowledgeAuditRecorder implements AiKnowledgeAuditRecorde
       source_refs: sourceRefs, latency_ms: event.latencyMs, occurred_at: event.occurredAt,
     });
     if (error) throw new AiValidationError('AI knowledge audit persistence failed.', error);
+  }
+}
+
+export class SupabaseAiSafetyAuditRecorder implements AiSafetyAuditRecorder {
+  constructor(private readonly client: AiSupabaseClientLike) {}
+  async record(event: AiSafetyAuditEvent): Promise<void> {
+    const { error } = await this.client.from('ai_safety_events').insert({
+      clinic_id: event.context.clinicId, conversation_id: event.context.conversationId,
+      correlation_id: event.context.correlationId, disposition: event.disposition,
+      categories: event.categories, validator: event.validator, grounded: event.grounded,
+      latency_ms: event.latencyMs, occurred_at: event.occurredAt,
+    });
+    if (error) throw new AiValidationError('AI safety audit persistence failed.', error);
   }
 }

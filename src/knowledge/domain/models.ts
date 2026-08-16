@@ -30,6 +30,9 @@ export interface AdministrativeKnowledgeSource {
   label: string;
   revision?: number;
   verifiedAt?: string;
+  clinicId?: string;
+  patientVisible?: boolean;
+  published?: boolean;
 }
 
 export interface AdministrativeKnowledgeFact {

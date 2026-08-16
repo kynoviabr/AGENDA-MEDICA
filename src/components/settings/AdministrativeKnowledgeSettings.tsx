@@ -84,7 +84,7 @@ export default function AdministrativeKnowledgeSettings() {
     mutationFn: async (entry: Entry) => {
       const status = entry.status === 'published' ? 'draft' : 'published';
       const { error } = await supabase.from('administrative_knowledge_entries' as never)
-        .update({ status, verified_at: status === 'published' ? new Date().toISOString() : null } as never)
+        .update({ status, patient_visible: status === 'published', verified_at: status === 'published' ? new Date().toISOString() : null } as never)
         .eq('clinic_id', clinicId!).eq('id', entry.id);
       if (error) throw error;
     },

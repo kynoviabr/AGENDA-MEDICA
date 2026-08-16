@@ -234,7 +234,8 @@ export class AuraConversationEngine {
     else if (missingFields[0]) clarification = { field: missingFields[0], question: clarificationForMissingField(missingFields[0]) };
 
     const requiresHandoff = interpretation.requiresHandoff || interpretation.intent === 'human_handoff' || safety.requiresHandoff;
-    const readyForToolExecution = PRIMARY_INTENTS.has(intentForRequirements) && !restricted && !requiresHandoff && !clarification && missingFields.length === 0;
+    const administrativeContinuation = restricted && PRIMARY_INTENTS.has(intentForRequirements);
+    const readyForToolExecution = PRIMARY_INTENTS.has(intentForRequirements) && (!restricted || administrativeContinuation) && !requiresHandoff && !clarification && missingFields.length === 0;
     let responsePlan: AiResponsePlan;
     if (restricted) responsePlan = {
       kind: 'refuse_medical', oneQuestionOnly: true,

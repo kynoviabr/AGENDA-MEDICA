@@ -48,7 +48,13 @@ export class AdministrativeKnowledgeToolExecutor implements AiToolExecutor {
         schemaVersion: 1, toolName: request.tool.name, kind: 'read', outcome: 'success',
         data: {
           topic: answer.topic, knowledgeOutcome: answer.outcome,
-          facts: answer.facts.map((item) => ({ text: item.text, source: item.source })),
+          facts: answer.facts.map((item) => ({
+            text: item.text,
+            source: {
+              ...item.source, clinicId: request.context.clinicId, patientVisible: true,
+              published: item.source.sourceType === 'curated' ? true : undefined,
+            },
+          })),
           safeMessage: answer.safeMessage,
         },
         message: answer.safeMessage,

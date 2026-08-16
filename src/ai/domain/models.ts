@@ -107,6 +107,8 @@ export interface AiResponse {
   requiresHandoff: boolean;
   conversationIntent?: string;
   readyForToolExecution?: boolean;
+  responseSafetyDisposition?: import('../safety/domain.ts').AiResponseSafetyDisposition;
+  safetyViolationCategories?: readonly import('../safety/domain.ts').AiSafetyViolationCategory[];
 }
 
 export interface AiConversationMessage {

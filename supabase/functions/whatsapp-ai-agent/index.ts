@@ -27,6 +27,7 @@ import {
   SupabaseAiToolAuditRecorder,
   SupabaseAiToolMutationGuard,
   SupabaseAiKnowledgeAuditRecorder,
+  SupabaseAiSafetyAuditRecorder,
   decideWhatsappAiExecution,
   type AiInboundMessage,
   type AiLoadedMedia,
@@ -356,6 +357,8 @@ function createAuraBridge(
     usageRecorder,
     {},
     toolCoordinator,
+    undefined,
+    new SupabaseAiSafetyAuditRecorder(aiClient),
   );
   return new WhatsappAuraAiBridge(ingestion, orchestrator, usageRecorder);
 }

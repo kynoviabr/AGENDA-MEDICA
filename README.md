@@ -90,6 +90,8 @@ A Fase 5.6B adiciona estado conversacional pequeno e versionado, interpretação
 
 A Fase 5.6D acrescenta o **Administrative Knowledge Engine** com estratégia structured-first: endereço/unidade, profissionais, serviços e convênios são consultados nos cadastros canônicos; políticas e FAQs ficam versionadas, verificadas e vinculadas ao tenant. Toda resposta administrativa possui fonte e, quando ela não existe, a Aura informa que o dado não está confirmado e oferece encaminhamento humano. Conteúdo clínico é bloqueado. O gate `ai_knowledge_enabled` nasce desligado e exige validação formal. Veja [`docs/FASE_5_6D_ADMINISTRATIVE_KNOWLEDGE_ENGINE.md`](docs/FASE_5_6D_ADMINISTRATIVE_KNOWLEDGE_ENGINE.md).
 
+A Fase 5.6E adiciona uma barreira obrigatória e determinística depois do draft e antes do outbound do novo Aura. Ela valida limites médicos, urgência sem triagem, grounding de tools/knowledge, números, mutations reais, prompt injection, dados internos, PII e tenant. Em `shadow` a validação roda sem envio; em `active` nenhum draft pode bypassá-la. O fluxo `legacy` não foi migrado. Veja [`docs/FASE_5_6E_AI_SAFETY_GUARDRAILS_RESPONSE_VALIDATION.md`](docs/FASE_5_6E_AI_SAFETY_GUARDRAILS_RESPONSE_VALIDATION.md).
+
 ## Módulos MVP desativados
 
 O repositório contém código de um MVP anterior para os módulos abaixo, mas eles estão **deliberadamente desativados no produto atual**:

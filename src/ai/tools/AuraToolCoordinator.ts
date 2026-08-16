@@ -34,8 +34,9 @@ export class AuraToolCoordinator implements AiToolCoordinator {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async executeIfPlanned(context: AiExecutionContext, conversation: AiConversationResult, config: AiClinicConfig, messageText: string) {
-    if (conversation.clarification || conversation.requiresHandoff || conversation.safetyDisposition === 'clinical_content_restricted') return null;
+  async executeIfPlanned(context: AiExecutionContext, conversation: AiConversationResult, config: AiClinicConfig, messageText = '') {
+    if (conversation.clarification || conversation.requiresHandoff
+      || (conversation.safetyDisposition === 'clinical_content_restricted' && !hasAdministrativeContinuation(messageText))) return null;
     const tool = this.planner.plan({ context, intent: conversation.intent, state: conversation.state, messageText });
     if (!tool) return null;
     const result = await this.executor.execute({
@@ -67,6 +68,11 @@ export class AuraToolCoordinator implements AiToolCoordinator {
     };
     await this.stateRepository.saveIfRevision(context.clinicId, context.conversationId, conversation.stateRevision, next);
   }
+}
+
+function hasAdministrativeContinuation(value: string) {
+  const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  return /\b(agendar|marcar|consulta|horario|cancelar|reagendar|confirmar|convenio|endereco|preco)\b/.test(text);
 }
 
 function sanitizeForModel(result: AiToolResult): AiToolResult {
