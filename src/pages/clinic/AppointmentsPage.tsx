@@ -1474,7 +1474,7 @@ export default function AppointmentsPage() {
         </div>
       )}
       {!appointmentsLoading && !appointmentsError && viewMode === 'doctors-day' && (
-        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-auto rounded-xl bg-card shadow-card animate-fade-in">
           {selectedDoctors.length === 0 ? (
             <div className="p-10 text-center">
               <Stethoscope className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -1482,70 +1482,120 @@ export default function AppointmentsPage() {
               <p className="mt-1 text-sm text-muted-foreground">Use o seletor de médicos acima.</p>
             </div>
           ) : (
-            <div className="grid min-w-max divide-x" style={{ gridTemplateColumns: `repeat(${selectedDoctors.length}, minmax(280px, 1fr))` }}>
+            <div
+              className="grid w-full min-w-max"
+              style={{ gridTemplateColumns: `64px repeat(${selectedDoctors.length}, minmax(280px, 1fr))` }}
+            >
+              <div className="sticky left-0 top-0 z-40 border-b border-r bg-card" />
               {selectedDoctors.map((professional) => {
-                const doctorAppointments = getApptsForDay(currentDate)
-                  .filter((appointment) => appointment.professional_id === professional.id)
-                  .sort((a, b) => +getAppointmentStartDate(a) - +getAppointmentStartDate(b));
-                const doctorBlocks = getBlocksForDay(currentDate)
-                  .filter((block) => !block.professional_id || block.professional_id === professional.id);
+                const appointmentCount = getApptsForDay(currentDate)
+                  .filter((appointment) => appointment.professional_id === professional.id).length;
                 return (
-                  <section key={professional.id} className="min-h-[480px]">
-                    <div className="sticky top-0 z-10 border-b bg-secondary/70 px-4 py-3 backdrop-blur">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ background: professional.color }} />
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{professional.label}</p>
-                          <p className="text-xs text-muted-foreground">{doctorAppointments.length} agendamento(s)</p>
-                        </div>
+                  <div key={`header-${professional.id}`} className="sticky top-0 z-30 border-b border-r bg-secondary/95 px-4 py-3 backdrop-blur">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: professional.color }} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground" title={professional.label}>{professional.label}</p>
+                        <p className="text-xs text-muted-foreground">{appointmentCount} agendamento(s)</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="w-full border-b px-4 py-2 text-left text-xs font-medium text-primary hover:bg-primary/5"
-                      onClick={() => {
-                        resetForm();
-                        setSelectedDate(format(currentDate, 'yyyy-MM-dd'));
-                        setSelectedProfessional(professional.id);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      + Novo agendamento para este médico
-                    </button>
-                    <div className="space-y-2 p-3">
-                      {doctorBlocks.map((block) => (
-                        <div key={block.id} className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                          <p className="font-medium">Bloqueado · {format(new Date(block.start_at), 'HH:mm')}–{format(new Date(block.end_at), 'HH:mm')}</p>
-                          <p>{block.reason || 'Indisponível'}</p>
-                        </div>
-                      ))}
-                      {doctorAppointments.length === 0 && doctorBlocks.length === 0 && (
-                        <p className="py-10 text-center text-sm text-muted-foreground">Agenda livre neste dia.</p>
+                  </div>
+                );
+              })}
+
+              <div className="sticky left-0 z-20 border-b border-r bg-card" />
+              {selectedDoctors.map((professional) => (
+                <button
+                  key={`new-${professional.id}`}
+                  type="button"
+                  className="border-b border-r px-4 py-2 text-left text-xs font-medium text-primary hover:bg-primary/5"
+                  onClick={() => {
+                    resetForm();
+                    setSelectedDate(format(currentDate, 'yyyy-MM-dd'));
+                    setSelectedProfessional(professional.id);
+                    setDialogOpen(true);
+                  }}
+                >
+                  + Novo agendamento para este médico
+                </button>
+              ))}
+
+              {halfHourSlots.flatMap((slot, slotIndex) => [
+                <div key={`team-time-${slot}`} className="sticky left-0 z-20 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">
+                  {slot}
+                </div>,
+                ...selectedDoctors.map((professional) => {
+                  const doctorAppointments = getApptsForDay(currentDate)
+                    .filter((appointment) => appointment.professional_id === professional.id);
+                  const slotAppointments = doctorAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                  const slotStart = new Date(`${format(currentDate, 'yyyy-MM-dd')}T${slot}:00`);
+                  const coveringAppointment = doctorAppointments.find((appointment) =>
+                    getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+                  );
+                  const doctorBlocks = getBlocksForDay(currentDate)
+                    .filter((block) => !block.professional_id || block.professional_id === professional.id);
+                  const startingBlock = doctorBlocks.find((block) => halfHourKey(new Date(block.start_at)) === slot);
+                  const coveringBlock = doctorBlocks.find((block) =>
+                    new Date(block.start_at) < slotStart && new Date(block.end_at) > slotStart
+                  );
+                  const isAvailable = isWithinProfessionalAvailability(currentDate, slot, professional.id);
+
+                  return (
+                    <div key={`${professional.id}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
+                      {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && (
+                        <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />
                       )}
-                      {doctorAppointments.map((appointment) => {
+                      {startingBlock ? (
+                        <div className="relative z-10 h-full overflow-hidden rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] text-amber-800" title={startingBlock.reason || 'Indisponível'}>
+                          <span className="block truncate font-medium">Bloqueado · {format(new Date(startingBlock.start_at), 'HH:mm')}–{format(new Date(startingBlock.end_at), 'HH:mm')}</span>
+                          <span className="block truncate">{startingBlock.reason || 'Indisponível'}</span>
+                        </div>
+                      ) : coveringBlock || (slotAppointments.length === 0 && coveringAppointment) ? (
+                        <div className="pointer-events-none h-full w-full" aria-label="Horário ocupado" />
+                      ) : slotAppointments.length === 0 ? (
+                        <button
+                          type="button"
+                          disabled={!isAvailable}
+                          className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed"
+                          onClick={() => openNewAppointmentAt(currentDate, slot, professional.id)}
+                          aria-label={isAvailable ? `Agendar com ${professional.label} às ${slot}` : `${professional.label} indisponível às ${slot}`}
+                        >
+                          + Agendar
+                        </button>
+                      ) : slotAppointments.map((appointment) => {
                         const status = statusConfig[appointment.status];
                         return (
                           <button
                             key={appointment.id}
                             type="button"
-                            className={`w-full rounded-lg border bg-background p-3 text-left transition-shadow hover:shadow-md ${status?.style || ''}`}
+                            className={`relative z-10 w-full overflow-hidden rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${status?.style || ''}`}
+                            style={{ height: `${Math.max(44, ((appointment.duration_minutes || 60) / 30) * 48 - 4)}px` }}
                             onClick={() => setViewAppt(appointment)}
+                            aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)} com ${professional.label}`}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="font-semibold text-foreground">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')}</p>
-                                <p className="truncate text-sm text-foreground">{getAppointmentDisplayName(appointment)}</p>
-                                <p className="truncate text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}</p>
-                              </div>
-                              <BrandBadge status={status?.badge || 'default'}>{status?.label || appointment.status}</BrandBadge>
-                            </div>
+                            <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                            <span className="block truncate text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min</span>
                           </button>
                         );
                       })}
                     </div>
-                  </section>
-                );
-              })}
+                  );
+                }),
+              ])}
+
+              <div className="sticky left-0 z-20 border-r bg-card px-1 py-2 text-right text-[9px] text-muted-foreground">Extras</div>
+              {selectedDoctors.map((professional) => (
+                <div key={`team-extras-${professional.id}`} className="min-h-9 border-r p-1">
+                  {getApptsForDay(currentDate)
+                    .filter((appointment) => appointment.professional_id === professional.id && !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment))))
+                    .map((appointment) => (
+                      <button key={appointment.id} type="button" className="w-full rounded-md border bg-background p-1.5 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="text-muted-foreground">Fora da grade operacional</span>
+                      </button>
+                    ))}
+                </div>
+              ))}
             </div>
           )}
         </div>
