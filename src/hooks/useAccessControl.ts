@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { LEGACY_ROLE_PERMISSIONS, MENU_PERMISSION_KEYS, type MenuPermissionKey } from '@/lib/accessPermissions';
+import { DEFAULT_ROLE_PERMISSIONS, MENU_PERMISSION_KEYS, type MenuPermissionKey } from '@/lib/accessPermissions';
 
 export function useAccessControl() {
   const { user } = useAuth();
@@ -36,7 +36,7 @@ export function useAccessControl() {
 
         const groupIds = (assignments || []).map((row: { group_id: string }) => row.group_id);
         if (groupIds.length === 0) {
-          const fallback = LEGACY_ROLE_PERMISSIONS[role] || [];
+          const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
           setPermissions(new Set(fallback));
           return;
         }
@@ -49,22 +49,16 @@ export function useAccessControl() {
           .eq('can_view', true);
 
         const resolved = (perms || []).map((row: { permission_key: MenuPermissionKey }) => row.permission_key);
-        // Safe fallback: if groups exist but no permissions were resolved (migration/seed gap),
-        // keep legacy role visibility to avoid locking existing clinic users out of modules.
+        // Safe fallback for clinics that have not provisioned access groups yet.
         if (resolved.length === 0) {
-          const fallback = LEGACY_ROLE_PERMISSIONS[role] || [];
+          const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
           setPermissions(new Set(fallback));
           return;
         }
 
-        const nextPermissions = new Set<MenuPermissionKey>(resolved);
-        const fallback = LEGACY_ROLE_PERMISSIONS[role] || [];
-        if (fallback.includes('whatsapp_ai.view')) {
-          nextPermissions.add('whatsapp_ai.view');
-        }
-        setPermissions(nextPermissions);
+        setPermissions(new Set<MenuPermissionKey>(resolved));
       } catch {
-        const fallback = LEGACY_ROLE_PERMISSIONS[role] || [];
+        const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
         setPermissions(new Set(fallback));
       } finally {
         setLoading(false);

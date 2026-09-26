@@ -6,48 +6,13 @@ export const MENU_PERMISSION_KEYS = [
   'whatsapp_ai.view',
   'patients.view',
   'treatments.view',
-  'proposals.view',
-  'contracts.view',
-  'payments.view',
-  'finance_contracts.view',
-  'goals.view',
   'appointments.view',
-  'sessions.view',
-  'evolution.view',
-  'photos.view',
-  'feedback.view',
-  'nps.view',
-  'satisfaction.view',
-  'reports.view',
   'settings.view',
 ] as const;
 
 export type MenuPermissionKey = (typeof MENU_PERMISSION_KEYS)[number];
 
-/**
- * Permissões do MVP legado mantidas no domínio para compatibilidade com dados
- * existentes, mas ocultas da configuração enquanto os módulos estão desativados.
- */
-export const DISABLED_MVP_PERMISSION_KEYS = [
-  'proposals.view',
-  'contracts.view',
-  'payments.view',
-  'finance_contracts.view',
-  'goals.view',
-  'sessions.view',
-  'evolution.view',
-  'photos.view',
-  'feedback.view',
-  'nps.view',
-  'satisfaction.view',
-  'reports.view',
-] as const satisfies readonly MenuPermissionKey[];
-
-const disabledMvpPermissionSet = new Set<MenuPermissionKey>(DISABLED_MVP_PERMISSION_KEYS);
-
-export const ACTIVE_MENU_PERMISSION_KEYS = MENU_PERMISSION_KEYS.filter(
-  (key) => !disabledMvpPermissionSet.has(key),
-);
+export const ACTIVE_MENU_PERMISSION_KEYS = MENU_PERMISSION_KEYS;
 
 export const PATH_PERMISSION_MAP: Array<{ prefix: string; key: MenuPermissionKey }> = [
   { prefix: '/clinic/settings', key: 'settings.view' },
@@ -55,23 +20,11 @@ export const PATH_PERMISSION_MAP: Array<{ prefix: string; key: MenuPermissionKey
   { prefix: '/clinic/crm', key: 'crm.view' },
   { prefix: '/clinic/patients', key: 'patients.view' },
   { prefix: '/clinic/treatments', key: 'treatments.view' },
-  { prefix: '/clinic/proposals', key: 'proposals.view' },
-  { prefix: '/clinic/contracts', key: 'contracts.view' },
-  { prefix: '/clinic/payments', key: 'payments.view' },
-  { prefix: '/clinic/finance/contracts', key: 'finance_contracts.view' },
-  { prefix: '/clinic/metas', key: 'goals.view' },
   { prefix: '/clinic/appointments', key: 'appointments.view' },
-  { prefix: '/clinic/sessions', key: 'sessions.view' },
-  { prefix: '/clinic/evolution', key: 'evolution.view' },
-  { prefix: '/clinic/photos', key: 'photos.view' },
-  { prefix: '/clinic/feedback', key: 'feedback.view' },
-  { prefix: '/clinic/nps', key: 'nps.view' },
-  { prefix: '/clinic/satisfaction', key: 'satisfaction.view' },
-  { prefix: '/clinic/reports', key: 'reports.view' },
   { prefix: '/clinic', key: 'dashboard.view' },
 ];
 
-export const LEGACY_ROLE_PERMISSIONS: Record<AppRole, MenuPermissionKey[]> = {
+export const DEFAULT_ROLE_PERMISSIONS: Record<AppRole, MenuPermissionKey[]> = {
   admin: [...MENU_PERMISSION_KEYS],
   receptionist: [
     'dashboard.view',
@@ -79,24 +32,13 @@ export const LEGACY_ROLE_PERMISSIONS: Record<AppRole, MenuPermissionKey[]> = {
     'whatsapp_ai.view',
     'patients.view',
     'treatments.view',
-    'proposals.view',
-    'contracts.view',
-    'payments.view',
     'appointments.view',
-    'feedback.view',
-    'nps.view',
   ],
   professional: [
     'dashboard.view',
     'patients.view',
     'treatments.view',
     'appointments.view',
-    'sessions.view',
-    'evolution.view',
-    'photos.view',
-    'feedback.view',
-    'nps.view',
-    'goals.view',
   ],
   sales: [
     'dashboard.view',
@@ -104,11 +46,6 @@ export const LEGACY_ROLE_PERMISSIONS: Record<AppRole, MenuPermissionKey[]> = {
     'whatsapp_ai.view',
     'patients.view',
     'treatments.view',
-    'proposals.view',
-    'contracts.view',
-    'finance_contracts.view',
-    'goals.view',
-    'reports.view',
   ],
   patient: [],
 };
