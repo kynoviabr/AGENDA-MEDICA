@@ -1207,7 +1207,7 @@ export default function CrmPage() {
     }
 
     let nextPatientId = lead.patient_id;
-    let nextAppointmentId = lead.appointment_id;
+    const nextAppointmentId = lead.appointment_id;
     const patch: Record<string, unknown> = {
       kanban_stage: targetStage,
     };
