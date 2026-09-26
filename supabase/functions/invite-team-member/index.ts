@@ -104,6 +104,24 @@ serve(async (req) => {
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
         .eq("clinic_id", clinicId).eq("email", email.toLowerCase().trim());
 
+      // Explicitly guarantee user_access_groups assignment (alongside DB trigger)
+      const groupCode = role === 'admin' ? 'admin' : role === 'receptionist' ? 'recepcao' : role === 'professional' ? 'profissionais' : 'comercial';
+      const { data: targetGroup } = await adminClient
+        .from("access_groups")
+        .select("id")
+        .eq("clinic_id", clinicId)
+        .eq("code", groupCode)
+        .maybeSingle();
+
+      if (targetGroup?.id) {
+        await adminClient.from("user_access_groups").upsert({
+          clinic_id: clinicId,
+          user_id: existingUser.id,
+          group_id: targetGroup.id,
+          is_active: true,
+        }, { onConflict: "clinic_id,user_id,group_id" });
+      }
+
       return new Response(JSON.stringify({ message: "Membro adicionado à equipe!", status: "added" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

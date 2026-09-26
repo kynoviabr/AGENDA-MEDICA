@@ -1,5 +1,3 @@
-import type { AppRole } from '@/hooks/useUserRole';
-
 export const MENU_PERMISSION_KEYS = [
   'dashboard.view',
   'crm.view',
@@ -23,29 +21,3 @@ export const PATH_PERMISSION_MAP: Array<{ prefix: string; key: MenuPermissionKey
   { prefix: '/clinic/appointments', key: 'appointments.view' },
   { prefix: '/clinic', key: 'dashboard.view' },
 ];
-
-export const DEFAULT_ROLE_PERMISSIONS: Record<AppRole, MenuPermissionKey[]> = {
-  admin: [...MENU_PERMISSION_KEYS],
-  receptionist: [
-    'dashboard.view',
-    'crm.view',
-    'whatsapp_ai.view',
-    'patients.view',
-    'treatments.view',
-    'appointments.view',
-  ],
-  professional: [
-    'dashboard.view',
-    'patients.view',
-    'treatments.view',
-    'appointments.view',
-  ],
-  sales: [
-    'dashboard.view',
-    'crm.view',
-    'whatsapp_ai.view',
-    'patients.view',
-    'treatments.view',
-  ],
-  patient: [],
-};

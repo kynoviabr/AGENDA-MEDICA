@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranding } from '@/contexts/BrandingContext';
-import { useUserRole, type AppRole } from '@/hooks/useUserRole';
 import { useAccessControl } from '@/hooks/useAccessControl';
 import type { MenuPermissionKey } from '@/lib/accessPermissions';
 import { cn } from '@/lib/utils';
@@ -16,18 +15,17 @@ interface NavItem {
   to: string;
   icon: unknown;
   label: string;
-  roles: AppRole[];
   permissionKey: MenuPermissionKey;
 }
 
 const navItems: NavItem[] = [
-  { to: '/clinic', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'dashboard.view' },
-  { to: '/clinic/appointments', icon: CalendarDays, label: 'Agenda', roles: ['admin', 'receptionist', 'professional'], permissionKey: 'appointments.view' },
-  { to: '/clinic/crm', icon: KanbanSquare, label: 'CRM', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'crm.view' },
-  { to: '/clinic/whatsapp-ai', icon: MessageSquare, label: 'WhatsApp IA', roles: ['admin', 'receptionist', 'sales'], permissionKey: 'whatsapp_ai.view' },
-  { to: '/clinic/patients', icon: Users, label: 'Pacientes', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'patients.view' },
-  { to: '/clinic/treatments', icon: Stethoscope, label: 'Tratamentos', roles: ['admin', 'receptionist', 'professional', 'sales'], permissionKey: 'treatments.view' },
-  { to: '/clinic/settings', icon: Settings, label: 'Configurações', roles: ['admin'], permissionKey: 'settings.view' },
+  { to: '/clinic', icon: LayoutDashboard, label: 'Dashboard', permissionKey: 'dashboard.view' },
+  { to: '/clinic/appointments', icon: CalendarDays, label: 'Agenda', permissionKey: 'appointments.view' },
+  { to: '/clinic/crm', icon: KanbanSquare, label: 'CRM', permissionKey: 'crm.view' },
+  { to: '/clinic/whatsapp-ai', icon: MessageSquare, label: 'WhatsApp IA', permissionKey: 'whatsapp_ai.view' },
+  { to: '/clinic/patients', icon: Users, label: 'Pacientes', permissionKey: 'patients.view' },
+  { to: '/clinic/treatments', icon: Stethoscope, label: 'Tratamentos', permissionKey: 'treatments.view' },
+  { to: '/clinic/settings', icon: Settings, label: 'Configurações', permissionKey: 'settings.view' },
 ];
 
 /**
@@ -40,12 +38,10 @@ export default function ClinicSidebar() {
   const [open, setOpen] = useState(false);
   const { signOut } = useAuth();
   const { clinicName, logoUrl } = useBranding();
-  const { role } = useUserRole();
   const { has, loading: accessLoading } = useAccessControl();
   const location = useLocation();
 
   const filteredNav = navItems.filter((item) => {
-    if (!role || !item.roles.includes(role as AppRole)) return false;
     if (accessLoading) return false;
     return has(item.permissionKey);
   });

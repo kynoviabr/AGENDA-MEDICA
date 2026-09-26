@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { DEFAULT_ROLE_PERMISSIONS, MENU_PERMISSION_KEYS, type MenuPermissionKey } from '@/lib/accessPermissions';
+import { type MenuPermissionKey } from '@/lib/accessPermissions';
 
 export function useAccessControl() {
   const { user } = useAuth();
@@ -14,12 +14,6 @@ export function useAccessControl() {
     if (roleLoading) return;
     if (!user || !clinicId || !role) {
       setPermissions(new Set());
-      setLoading(false);
-      return;
-    }
-
-    if (role === 'admin') {
-      setPermissions(new Set(MENU_PERMISSION_KEYS));
       setLoading(false);
       return;
     }
@@ -36,8 +30,7 @@ export function useAccessControl() {
 
         const groupIds = (assignments || []).map((row: { group_id: string }) => row.group_id);
         if (groupIds.length === 0) {
-          const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
-          setPermissions(new Set(fallback));
+          setPermissions(new Set());
           return;
         }
 
@@ -49,17 +42,9 @@ export function useAccessControl() {
           .eq('can_view', true);
 
         const resolved = (perms || []).map((row: { permission_key: MenuPermissionKey }) => row.permission_key);
-        // Safe fallback for clinics that have not provisioned access groups yet.
-        if (resolved.length === 0) {
-          const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
-          setPermissions(new Set(fallback));
-          return;
-        }
-
         setPermissions(new Set<MenuPermissionKey>(resolved));
       } catch {
-        const fallback = DEFAULT_ROLE_PERMISSIONS[role] || [];
-        setPermissions(new Set(fallback));
+        setPermissions(new Set());
       } finally {
         setLoading(false);
       }
