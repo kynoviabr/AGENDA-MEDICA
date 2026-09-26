@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useProfessionals, Professional } from '@/hooks/useProfessionals';
+import { useProfessionals } from '@/hooks/useProfessionals';
 import { useRoles } from '@/hooks/useRoles';
 import { useClassEntities } from '@/hooks/useClassEntities';
 import { useProfessionalTreatments } from '@/hooks/useProfessionalTreatments';
@@ -14,9 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Loader2, UserCheck, UserX, Search, Users, Stethoscope, ShieldCheck, Building2, AlertTriangle, ArrowUpDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Loader2, UserCheck, UserX, Search, Users, Stethoscope, ShieldCheck, Building2, AlertTriangle, ArrowUpDown, ChevronLeft, ChevronRight, X, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 function formatCPF(value: string) {
@@ -48,14 +47,40 @@ const PAGE_SIZE = 10;
 type SortKey = 'full_name' | 'status' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
-export default function ProfessionalsTab() {
+interface TreatmentOption {
+  id: string;
+  name: string;
+}
+
+interface LocationOption {
+  id: string;
+  name: string;
+  is_primary: boolean;
+  active: boolean;
+}
+
+interface ProfessionalLocationLink {
+  id: string;
+  professionalId: string;
+  locationId: string;
+  active: boolean;
+}
+
+interface ProfessionalsTabProps {
+  onManageLinks?: (professionalId: string) => void;
+}
+
+export default function ProfessionalsTab({ onManageLinks }: ProfessionalsTabProps) {
   const { items, loading, create, toggleStatus } = useProfessionals();
   const { items: roles } = useRoles();
   const { items: entities } = useClassEntities();
-  const { items: profTreatments, create: linkTreatment } = useProfessionalTreatments();
-  const { clinicId } = useUserRole();
+  const { items: profTreatments } = useProfessionalTreatments();
+  const { clinicId, role: currentUserRole } = useUserRole();
+  const canManageLinks = currentUserRole === 'admin';
 
-  const [treatments, setTreatments] = useState<unknown[]>([]);
+  const [treatments, setTreatments] = useState<TreatmentOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [professionalLocationLinks, setProfessionalLocationLinks] = useState<ProfessionalLocationLink[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cpfError, setCpfError] = useState('');
@@ -63,7 +88,7 @@ export default function ProfessionalsTab() {
     full_name: '', cpf: '', email: '', phone: '', specialty: '',
     registration_number: '', user_id: '', role_id: '', class_entity_id: '',
   });
-  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+  const [additionalPhones, setAdditionalPhones] = useState<string[]>([]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -82,11 +107,31 @@ export default function ProfessionalsTab() {
   const [confirmToggle, setConfirmToggle] = useState<{ id: string; name: string; current: string } | null>(null);
   const [toggling, setToggling] = useState(false);
 
+  const loadLocationData = useCallback(async () => {
+    if (!clinicId) return;
+    const [locationsResult, linksResult] = await Promise.all([
+      supabase.from('clinic_locations').select('id, name, is_primary, active').eq('clinic_id', clinicId).order('is_primary', { ascending: false }).order('name'),
+      supabase.from('professional_locations').select('id, professional_id, location_id, active').eq('clinic_id', clinicId),
+    ]);
+    if (locationsResult.error || linksResult.error) {
+      toast.error('Não foi possível carregar os vínculos entre profissionais e unidades.');
+      return;
+    }
+    setLocations(locationsResult.data || []);
+    setProfessionalLocationLinks((linksResult.data || []).map(link => ({
+      id: link.id,
+      professionalId: link.professional_id,
+      locationId: link.location_id,
+      active: link.active,
+    })));
+  }, [clinicId]);
+
   useEffect(() => {
     if (!clinicId) return;
     supabase.from('treatments').select('id, name').eq('clinic_id', clinicId).eq('is_active', true).order('name')
       .then(({ data }) => { if (data) setTreatments(data); });
-  }, [clinicId]);
+    void loadLocationData();
+  }, [clinicId, loadLocationData]);
 
   const handleCpfChange = (value: string) => {
     const formatted = formatCPF(value);
@@ -98,7 +143,6 @@ export default function ProfessionalsTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.full_name.trim()) { toast.error('Informe o nome completo do profissional'); return; }
-    if (!form.user_id.trim()) { toast.error('Informe o User ID do profissional'); return; }
     if (!form.role_id) { toast.error('Selecione um cargo'); return; }
     if (!form.class_entity_id) { toast.error('Selecione uma entidade de classe'); return; }
     const cpfDigits = form.cpf.replace(/\D/g, '');
@@ -109,14 +153,15 @@ export default function ProfessionalsTab() {
     const result = await create({
       full_name: form.full_name, cpf: cpfDigits || null, email: form.email || null,
       phone: form.phone || null, specialty: form.specialty || null,
-      registration_number: form.registration_number || null, user_id: form.user_id,
+      additional_phones: Array.from(new Set(additionalPhones.map(phone => phone.trim()).filter(phone => phone && phone !== form.phone.trim()))),
+      registration_number: form.registration_number || null, user_id: form.user_id.trim() || null,
       role_id: form.role_id, class_entity_id: form.class_entity_id, status: 'active',
     });
     if (result) {
-      for (const tid of selectedTreatments) await linkTreatment(result.id, tid);
+      toast.warning('Profissional cadastrado sem vínculos operacionais. Configure unidades, serviços e horários na aba Vínculos.');
       setOpen(false);
       setForm({ full_name: '', cpf: '', email: '', phone: '', specialty: '', registration_number: '', user_id: '', role_id: '', class_entity_id: '' });
-      setSelectedTreatments([]); setCpfError('');
+      setAdditionalPhones([]); setCpfError('');
     }
     setSaving(false);
   };
@@ -277,8 +322,9 @@ export default function ProfessionalsTab() {
                         {cpfError && <p className="text-xs text-destructive flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{cpfError}</p>}
                       </div>
                       <div className="space-y-1.5">
-                        <Label>User ID <span className="text-destructive">*</span></Label>
-                        <Input value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))} required placeholder="UUID do usuário" className="font-mono text-xs" />
+                        <Label>User ID de acesso (opcional)</Label>
+                        <Input value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))} placeholder="Vincule apenas se possuir login" className="font-mono text-xs" />
+                        <p className="text-xs text-muted-foreground">O profissional pode receber agendamentos sem possuir acesso ao sistema.</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -287,10 +333,33 @@ export default function ProfessionalsTab() {
                         <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Telefone</Label>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>Telefone principal</Label>
+                          <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs" onClick={() => setAdditionalPhones(phones => phones.length < 10 ? [...phones, ''] : phones)} disabled={additionalPhones.length >= 10}>
+                            <Plus className="h-3 w-3" />Adicionar telefone
+                          </Button>
+                        </div>
                         <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(00) 00000-0000" />
                       </div>
                     </div>
+                    {additionalPhones.length > 0 && (
+                      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Telefones adicionais</p>
+                        {additionalPhones.map((phone, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <Input
+                              value={phone}
+                              onChange={event => setAdditionalPhones(phones => phones.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                              placeholder="(00) 00000-0000"
+                              aria-label={`Telefone adicional ${index + 1}`}
+                            />
+                            <Button type="button" variant="ghost" size="icon" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setAdditionalPhones(phones => phones.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover telefone adicional ${index + 1}`}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-3">
                     <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Dados Profissionais</p>
@@ -324,25 +393,8 @@ export default function ProfessionalsTab() {
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Stethoscope className="w-4 h-4 text-primary" />Tratamentos Realizados</p>
-                    <Separator />
-                    <div className="border rounded-lg p-3 max-h-44 overflow-y-auto space-y-1.5 bg-muted/30">
-                      {treatments.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-3">Nenhum tratamento ativo.</p>
-                      ) : treatments.map(t => (
-                        <label key={t.id} className="flex items-center gap-2.5 text-sm cursor-pointer hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
-                          <Checkbox checked={selectedTreatments.includes(t.id)} onCheckedChange={() => setSelectedTreatments(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} />
-                          {t.name}
-                        </label>
-                      ))}
-                    </div>
-                    {selectedTreatments.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">{selectedTreatments.length} selecionado(s)</Badge>
-                        <Button type="button" variant="ghost" size="sm" className="text-xs h-6" onClick={() => setSelectedTreatments([])}>Limpar</Button>
-                      </div>
-                    )}
+                  <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                    Após cadastrar, configure unidades, serviços, convênios e horário padrão em Configurações → Vínculos.
                   </div>
                   <Separator />
                   <Button type="submit" disabled={saving || !form.role_id || !form.class_entity_id} className="w-full gradient-primary text-primary-foreground shadow-glow">
@@ -425,6 +477,12 @@ export default function ProfessionalsTab() {
                 const entity = entities.find(e => e.id === p.class_entity_id);
                 const tids = profTreatmentMap[p.id] || [];
                 const treatmentNames = tids.map(tid => treatments.find(tr => tr.id === tid)?.name).filter(Boolean);
+                const linkedLocationIds = professionalLocationLinks
+                  .filter(link => link.professionalId === p.id && link.active)
+                  .map(link => link.locationId);
+                const linkedLocations = linkedLocationIds
+                  .map(locationId => locations.find(location => location.id === locationId))
+                  .filter((location): location is LocationOption => Boolean(location));
                 const isInactive = p.status === 'inactive';
 
                 return (
@@ -447,6 +505,7 @@ export default function ProfessionalsTab() {
                             {p.specialty && <span>• {p.specialty}</span>}
                             {p.cpf && <span className="font-mono">• CPF: {formatCPF(p.cpf)}</span>}
                             {p.phone && <span>• {p.phone}</span>}
+                            {p.additional_phones?.map((phone, index) => <span key={`${p.id}-phone-${index}`}>• {phone}</span>)}
                           </div>
                           {treatmentNames.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
@@ -455,13 +514,28 @@ export default function ProfessionalsTab() {
                               ))}
                             </div>
                           )}
+                          <div className="flex flex-wrap items-center gap-1 mt-2">
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mr-1">Unidades</span>
+                            {linkedLocations.length === 0 ? (
+                              <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 font-normal">Sem unidade</Badge>
+                            ) : linkedLocations.map(location => (
+                              <Badge key={location.id} variant="outline" className={`text-[10px] px-1.5 py-0 font-normal ${!location.active ? 'opacity-60' : ''}`}>
+                                {location.name}{location.is_primary ? ' · Principal' : ''}{!location.active ? ' · Inativa' : ''}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                      <Button size="sm" variant={isInactive ? 'default' : 'outline'}
-                        className={isInactive ? '' : 'text-destructive border-destructive/30 hover:bg-destructive/10'}
-                        onClick={() => setConfirmToggle({ id: p.id, name: p.full_name, current: p.status })}>
-                        {isInactive ? <><UserCheck className="w-4 h-4 mr-1" />Reativar</> : <><UserX className="w-4 h-4 mr-1" />Inativar</>}
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button size="sm" variant="outline" disabled={!canManageLinks} onClick={() => onManageLinks?.(p.id)}>
+                          <Link2 className="w-4 h-4 mr-1" />Gerenciar vínculos
+                        </Button>
+                        <Button size="sm" variant={isInactive ? 'default' : 'outline'}
+                          className={isInactive ? '' : 'text-destructive border-destructive/30 hover:bg-destructive/10'}
+                          onClick={() => setConfirmToggle({ id: p.id, name: p.full_name, current: p.status })}>
+                          {isInactive ? <><UserCheck className="w-4 h-4 mr-1" />Reativar</> : <><UserX className="w-4 h-4 mr-1" />Inativar</>}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Stethoscope, Eye, EyeOff, Mail, Sparkles, Shield, Activity } from 'lucide-react';
+import { Stethoscope, Eye, EyeOff, Mail, Sparkles, Shield, CalendarDays } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const getErrorMessage = (error: unknown) =>
@@ -149,20 +149,20 @@ export default function LoginPage() {
 
         <div className="relative max-w-md">
           <p className="text-[11px] uppercase tracking-[0.18em] font-semibold text-primary-light/90 mb-4">
-            Plataforma de gestão clínica
+            Atendimento e agenda médica
           </p>
           <h2 className="font-heading text-4xl xl:text-5xl font-bold leading-[1.05] tracking-tight">
-            A jornada completa do seu paciente,{' '}
-            <span className="text-primary-light">em uma única plataforma.</span>
+            Atendimento inteligente,{' '}
+            <span className="text-primary-light">agenda organizada.</span>
           </h2>
           <p className="text-[15px] leading-relaxed text-white/70 mt-5 max-w-sm">
-            Propostas, contratos, pagamentos, agenda e evolução — tudo conectado, com inteligência de retenção e portal próprio do paciente.
+            WhatsApp IA, agenda, pacientes e Micro CRM conectados para apoiar a recepção da clínica.
           </p>
 
           <ul className="mt-10 space-y-4 text-sm">
             {[
-              { icon: Sparkles, text: 'Funil comercial completo: proposta → contrato → pagamento' },
-              { icon: Activity, text: 'Acompanhamento de evolução com fotos antes/depois' },
+              { icon: Sparkles, text: 'Atendimento automático e handoff para a equipe' },
+              { icon: CalendarDays, text: 'Agenda, encaixes e lembretes em um só fluxo' },
               { icon: Shield, text: 'Multi-tenant seguro com white-label por clínica' },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-start gap-3">

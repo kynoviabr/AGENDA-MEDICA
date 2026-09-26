@@ -1,4 +1,10 @@
-project_id = "qpqknsvbhfljhndloyda"
+project_id = "nklccxaeasoxjanxgqcl"
 
 [functions.whatsapp-ai-agent]
+verify_jwt = false
+
+[functions.whatsapp-connect]
+verify_jwt = true
+
+[functions.aura-operational-health]
 verify_jwt = false

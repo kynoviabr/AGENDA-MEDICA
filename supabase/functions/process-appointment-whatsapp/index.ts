@@ -111,15 +111,17 @@ serve(async (req) => {
     if (parsed.action === "cancel") appointmentStatus = "cancelled";
 
     if (appointmentStatus) {
-      const appointmentPatch: Record<string, unknown> = { status: appointmentStatus };
-      if (appointmentStatus === "confirmed") appointmentPatch["confirmed_at"] = new Date().toISOString();
-      if (appointmentStatus === "cancelled") appointmentPatch["cancelled_reason"] = "Cancelado via WhatsApp";
-
-      const { error: appointmentError } = await admin
-        .from("appointments")
-        .update(appointmentPatch)
-        .eq("id", tokenRow.appointment_id)
-        .eq("clinic_id", tokenRow.clinic_id);
+      const appointmentOperation = appointmentStatus === "cancelled"
+        ? await admin.rpc("cancel_appointment_secure", {
+            p_appointment_id: tokenRow.appointment_id,
+            p_reason: "Cancelado via WhatsApp",
+            p_status: "cancelled",
+          })
+        : await admin.from("appointments").update({
+            status: "confirmed",
+            confirmed_at: new Date().toISOString(),
+          }).eq("id", tokenRow.appointment_id).eq("clinic_id", tokenRow.clinic_id);
+      const appointmentError = appointmentOperation.error;
       if (appointmentError) throw appointmentError;
     }
 

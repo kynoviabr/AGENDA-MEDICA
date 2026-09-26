@@ -5,7 +5,7 @@ function leadTargetName() {
   return process.env.E2E_LEAD_NAME || 'Agenda teste';
 }
 
-test.describe('Fluxo E2E - CRM -> Proposta -> Contrato', () => {
+test.describe.skip('LEGADO ISOLADO - CRM -> Proposta -> Contrato', () => {
   test('abre lead, acessa proposta e gera contrato', async ({ page }) => {
     const leadName = leadTargetName();
     const leadNameRegex = new RegExp(`^${leadName}$`, 'i');

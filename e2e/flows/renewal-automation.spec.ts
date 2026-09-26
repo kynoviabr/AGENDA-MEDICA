@@ -5,7 +5,7 @@ function renewalPatientName() {
   return process.env.E2E_RENEWAL_PATIENT_NAME || 'E2E Renovacao Seed';
 }
 
-test.describe('Fluxo E2E - Renovação Automática', () => {
+test.describe.skip('LEGADO ISOLADO - Renovação Automática', () => {
   test('exibe bloco de renovações no CRM e ações principais do card', async ({ page }) => {
     await login(page);
     await page.getByRole('link', { name: /^CRM$/i }).click();

@@ -13,7 +13,7 @@ test.describe('Fluxo E2E - Kanban', () => {
     await page.getByRole('link', { name: /^CRM$/i }).click();
     await expect(page).toHaveURL(/\/clinic\/crm/i);
 
-    const search = page.getByPlaceholder(/buscar por nome, telefone ou cpf/i);
+    const search = page.getByPlaceholder(/buscar por nome, telefone ou e-mail/i);
     await expect(search).toBeVisible();
     await search.fill(leadName);
 
@@ -22,10 +22,10 @@ test.describe('Fluxo E2E - Kanban', () => {
     await leadNameOnBoard.click();
 
     const drawer = page.getByRole('dialog');
-    await expect(drawer.getByRole('tab', { name: /^Dados Gerais$/i })).toBeVisible();
+    await expect(drawer.getByRole('tab', { name: /^Dados gerais$/i })).toBeVisible();
 
     const stageSelect = drawer.locator('button[role="combobox"]').first();
-    const stagesToTest = ['Contato Iniciado', 'Agendado', 'Proposta'];
+    const stagesToTest = ['Em atendimento', 'Agendado', 'Interessado'];
 
     for (const stageLabel of stagesToTest) {
       await stageSelect.click();

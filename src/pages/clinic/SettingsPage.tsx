@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
-import { useBranding } from '@/contexts/BrandingContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,44 +11,43 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Settings, Palette, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, Tags, DollarSign, SlidersHorizontal, Target, Briefcase, Building2, UserCog, AlertTriangle, Lock, MessageSquare, ClipboardList } from 'lucide-react';
-import CategoriesTab from '@/components/settings/CategoriesTab';
-import CostItemsTab from '@/components/settings/CostItemsTab';
-import ParametersTab from '@/components/settings/ParametersTab';
-import SalesGoalsTab from '@/components/settings/SalesGoalsTab';
+import { Settings, Users, Stethoscope, Save, Upload, X, Image, UserPlus, Mail, Clock, CheckCircle, XCircle, UserCog, Lock, MessageSquare, HeartHandshake, Link2, ListTree } from 'lucide-react';
 import ProfessionalsTab from '@/components/settings/ProfessionalsTab';
-import RolesTab from '@/components/settings/RolesTab';
-import ClassEntitiesTab from '@/components/settings/ClassEntitiesTab';
-import DashboardAlertsTab from '@/components/settings/DashboardAlertsTab';
 import KanbanStagesTab from '@/components/settings/KanbanStagesTab';
 import PatientAppAccessTab from '@/components/settings/PatientAppAccessTab';
 import AccessGroupsTab from '@/components/settings/AccessGroupsTab';
 import WhatsAppAiSettingsTab from '@/components/settings/WhatsAppAiSettingsTab';
-import AnamneseTemplatesTab from '@/components/settings/AnamneseTemplatesTab';
-import TreatmentsPage from '@/pages/clinic/TreatmentsPage';
+import HealthcareSettingsTab from '@/components/settings/HealthcareSettingsTab';
+import LocationsTab from '@/components/settings/LocationsTab';
+import ProfessionalRulesTab from '@/components/settings/ProfessionalRulesTab';
+import ProfessionalLinksTab from '@/components/settings/ProfessionalLinksTab';
+import RegistrationsTab from '@/components/settings/RegistrationsTab';
+import ServicesPage from '@/pages/clinic/ServicesPage';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useSearchParams } from 'react-router-dom';
 
 export default function SettingsPage() {
   const { clinicId, role } = useUserRole();
   const { user } = useAuth();
-  const branding = useBranding();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams] = useSearchParams();
+  const requestedSection = searchParams.get('section');
+  const settingsSections = ['general', 'professionals', 'treatments', 'links', 'healthcare', 'professional-rules', 'whatsapp-ai', 'crm-kanban', 'team', 'registrations'];
+  const initialTab = settingsSections.includes(requestedSection || '') ? requestedSection! : 'general';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [linksProfessionalId, setLinksProfessionalId] = useState(searchParams.get('professional') || undefined);
 
   // Clinic info
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
-
-  // Colors
-  const [primaryColor, setPrimaryColor] = useState('#1a7a6d');
-  const [secondaryColor, setSecondaryColor] = useState('#f5f0e8');
-  const [accentColor, setAccentColor] = useState('#c8912e');
+  const [administrativeManagerName, setAdministrativeManagerName] = useState('');
+  const [receptionContactName, setReceptionContactName] = useState('');
 
   // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -108,10 +106,9 @@ export default function SettingsPage() {
       .then(({ data }) => {
         if (data) {
           setName(data.name); setPhone(data.phone || ''); setEmail(data.email || '');
-          setAddress(data.address || ''); setWhatsapp(data.support_whatsapp || '');
-          setPrimaryColor(data.primary_color || '#1a7a6d');
-          setSecondaryColor(data.secondary_color || '#f5f0e8');
-          setAccentColor(data.accent_color || '#c8912e');
+          setWhatsapp(data.support_whatsapp || '');
+          setAdministrativeManagerName(data.administrative_manager_name || '');
+          setReceptionContactName(data.reception_contact_name || '');
           setLogoUrl(data.logo_url);
         }
       });
@@ -160,13 +157,16 @@ export default function SettingsPage() {
     if (!clinicId || role !== 'admin') return;
     setSaving(true);
     const { error } = await supabase.from('clinics').update({
-      name, phone, email, address, support_whatsapp: whatsapp,
-      primary_color: primaryColor, secondary_color: secondaryColor, accent_color: accentColor,
+      name, phone, email, support_whatsapp: whatsapp,
+      administrative_manager_name: administrativeManagerName.trim() || null,
+      reception_contact_name: receptionContactName.trim() || null,
     }).eq('id', clinicId);
     setSaving(false);
-    if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
+    if (error) {
+      toast({ title: 'Não foi possível salvar', description: 'Revise os dados administrativos e tente novamente.', variant: 'destructive' });
+      return;
+    }
     toast({ title: 'Configurações salvas!' });
-    window.location.reload();
   };
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -216,57 +216,38 @@ export default function SettingsPage() {
     <div>
       <PageHeader title="Configurações" description="Gerencie sua clínica" />
 
-      <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="flex-wrap">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:grid-cols-3 lg:grid-cols-5">
           <TabsTrigger value="general"><Settings className="w-4 h-4 mr-1" />Geral</TabsTrigger>
-          <TabsTrigger value="branding"><Palette className="w-4 h-4 mr-1" />Branding</TabsTrigger>
-          <TabsTrigger value="roles"><Briefcase className="w-4 h-4 mr-1" />Cargos</TabsTrigger>
-          <TabsTrigger value="entities"><Building2 className="w-4 h-4 mr-1" />Conselhos</TabsTrigger>
-          <TabsTrigger value="categories"><Tags className="w-4 h-4 mr-1" />Categorias</TabsTrigger>
-          <TabsTrigger value="costs"><DollarSign className="w-4 h-4 mr-1" />Custos</TabsTrigger>
-          <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
           <TabsTrigger value="professionals"><UserCog className="w-4 h-4 mr-1" />Profissionais</TabsTrigger>
-          <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Tratamentos</TabsTrigger>
-          <TabsTrigger value="anamnese"><ClipboardList className="w-4 h-4 mr-1" />Anamnese</TabsTrigger>
+          <TabsTrigger value="treatments"><Stethoscope className="w-4 h-4 mr-1" />Serviços</TabsTrigger>
+          <TabsTrigger value="links"><Link2 className="w-4 h-4 mr-1" />Vínculos</TabsTrigger>
+          <TabsTrigger value="healthcare"><HeartHandshake className="w-4 h-4 mr-1" />Atendimento</TabsTrigger>
+          <TabsTrigger value="professional-rules"><Settings className="w-4 h-4 mr-1" />Regras</TabsTrigger>
           <TabsTrigger value="whatsapp-ai"><MessageSquare className="w-4 h-4 mr-1" />WhatsApp IA</TabsTrigger>
           <TabsTrigger value="crm-kanban"><Settings className="w-4 h-4 mr-1" />CRM Kanban</TabsTrigger>
-          <TabsTrigger value="goals"><Target className="w-4 h-4 mr-1" />Metas</TabsTrigger>
-          <TabsTrigger value="parameters"><SlidersHorizontal className="w-4 h-4 mr-1" />Parâmetros</TabsTrigger>
+          <TabsTrigger value="team"><Lock className="w-4 h-4 mr-1" />Segurança e Acesso</TabsTrigger>
+          <TabsTrigger value="registrations"><ListTree className="w-4 h-4 mr-1" />Cadastros</TabsTrigger>
         </TabsList>
 
         {/* ===== GENERAL ===== */}
-        <TabsContent value="general">
+        <TabsContent value="general" className="space-y-5">
           <Card className="shadow-card">
             <CardHeader><CardTitle>Dados da Clínica</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Nome</Label><Input value={name} onChange={e => setName(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Telefone</Label><Input value={phone} onChange={e => setPhone(e.target.value)} /></div>
-                <div className="space-y-2"><Label>E-mail</Label><Input value={email} onChange={e => setEmail(e.target.value)} /></div>
-                <div className="space-y-2"><Label>WhatsApp Suporte</Label><Input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} /></div>
-              </div>
-              <div className="space-y-2"><Label>Endereço</Label><Input value={address} onChange={e => setAddress(e.target.value)} /></div>
-              <Button onClick={saveClinic} disabled={saving || role !== 'admin'} className="gradient-primary text-primary-foreground">
-                <Save className="w-4 h-4 mr-2" />{saving ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ===== BRANDING ===== */}
-        <TabsContent value="branding">
-          <Card className="shadow-card">
-            <CardHeader><CardTitle>Identidade Visual</CardTitle></CardHeader>
-            <CardContent className="space-y-6">
-              {/* Logo */}
+            <CardContent className="max-w-2xl space-y-6">
               <div className="space-y-3">
-                <Label>Logo da Clínica</Label>
+                <Label htmlFor="clinic-logo">Logo da clínica</Label>
                 <div className="flex items-center gap-4">
                   {logoUrl ? (
                     <div className="relative group">
-                      <img src={logoUrl} alt="Logo" className="w-20 h-20 rounded-xl object-cover border shadow-sm" />
-                      <button onClick={handleRemoveLogo} disabled={uploading || role !== 'admin'}
-                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <img src={logoUrl} alt="Logo da clínica" className="w-20 h-20 rounded-xl object-cover border shadow-sm" />
+                      <button
+                        type="button"
+                        aria-label="Remover logo da clínica"
+                        onClick={handleRemoveLogo}
+                        disabled={uploading || role !== 'admin'}
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      >
                         <X className="w-3 h-3" />
                       </button>
                     </div>
@@ -276,54 +257,65 @@ export default function SettingsPage() {
                     </div>
                   )}
                   <div>
-                    <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
-                    <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading || role !== 'admin'} size="sm">
-                      <Upload className="w-4 h-4 mr-2" />{uploading ? 'Enviando...' : logoUrl ? 'Trocar Logo' : 'Enviar Logo'}
+                    <input id="clinic-logo" ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
+                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading || role !== 'admin'} size="sm">
+                      <Upload className="w-4 h-4 mr-2" />{uploading ? 'Enviando...' : logoUrl ? 'Trocar logo' : 'Enviar logo'}
                     </Button>
                     <p className="text-xs text-muted-foreground mt-1">PNG, JPG ou WebP • Máx. 2MB</p>
                   </div>
                 </div>
               </div>
-
-              <p className="text-sm text-muted-foreground">As cores serão aplicadas em todo o sistema.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {[
-                  { label: 'Cor Primária', value: primaryColor, set: setPrimaryColor },
-                  { label: 'Cor Secundária', value: secondaryColor, set: setSecondaryColor },
-                  { label: 'Cor de Destaque', value: accentColor, set: setAccentColor },
-                ].map(({ label, value, set }) => (
-                  <div key={label} className="space-y-2">
-                    <Label>{label}</Label>
-                    <div className="flex items-center gap-3">
-                      <input type="color" value={value} onChange={e => set(e.target.value)} className="w-10 h-10 rounded-lg border cursor-pointer" />
-                      <Input value={value} onChange={e => set(e.target.value)} className="font-mono text-sm" />
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <Label htmlFor="clinic-name">Nome da clínica</Label>
+                <Input id="clinic-name" value={name} onChange={e => setName(e.target.value)} disabled={role !== 'admin'} />
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="p-4 rounded-xl border">
-                <p className="text-sm font-medium text-foreground mb-3">Pré-visualização</p>
-                <div className="flex items-center gap-4 mb-4">
-                  {logoUrl ? <img src={logoUrl} alt="" className="w-10 h-10 rounded-lg object-cover" /> : (
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: primaryColor }}>
-                      <Stethoscope className="w-5 h-5 text-white" />
-                    </div>
-                  )}
-                  <span className="font-bold text-foreground">{name || 'Sua Clínica'}</span>
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Contato Administrativo</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Estes dados são usados para assuntos administrativos, suporte, cobrança e relacionamento com a clínica. O WhatsApp utilizado no atendimento de pacientes é configurado em WhatsApp IA.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="administrative-manager-name">Gestor responsável</Label>
+                  <Input
+                    id="administrative-manager-name"
+                    value={administrativeManagerName}
+                    onChange={event => setAdministrativeManagerName(event.target.value)}
+                    placeholder="Ex.: Maria Silva"
+                    maxLength={160}
+                    disabled={role !== 'admin'}
+                  />
                 </div>
-                <div className="flex gap-3">
-                  <div className="h-12 flex-1 rounded-lg flex items-center justify-center text-xs font-semibold text-white" style={{ background: primaryColor }}>Primária</div>
-                  <div className="h-12 flex-1 rounded-lg flex items-center justify-center text-xs font-semibold border" style={{ background: secondaryColor }}>Secundária</div>
-                  <div className="h-12 flex-1 rounded-lg flex items-center justify-center text-xs font-semibold text-white" style={{ background: accentColor }}>Destaque</div>
+                <div className="min-w-0 space-y-2">
+                  <Label htmlFor="reception-contact-name">Secretária / responsável pela recepção</Label>
+                  <Input
+                    id="reception-contact-name"
+                    value={receptionContactName}
+                    onChange={event => setReceptionContactName(event.target.value)}
+                    placeholder="Ex.: Ana Souza"
+                    maxLength={160}
+                    disabled={role !== 'admin'}
+                  />
                 </div>
               </div>
-
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="min-w-0 space-y-2"><Label htmlFor="administrative-email">E-mail administrativo</Label><Input id="administrative-email" type="email" value={email} onChange={e => setEmail(e.target.value)} disabled={role !== 'admin'} /></div>
+                <div className="min-w-0 space-y-2"><Label htmlFor="administrative-whatsapp">WhatsApp administrativo</Label><Input id="administrative-whatsapp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} disabled={role !== 'admin'} /><p className="text-xs text-muted-foreground">Não é o número usado pela Aura para atender pacientes.</p></div>
+                <div className="min-w-0 space-y-2"><Label htmlFor="administrative-phone">Telefone administrativo</Label><Input id="administrative-phone" value={phone} onChange={e => setPhone(e.target.value)} disabled={role !== 'admin'} /></div>
+              </div>
               <Button onClick={saveClinic} disabled={saving || role !== 'admin'} className="gradient-primary text-primary-foreground">
-                <Save className="w-4 h-4 mr-2" />{saving ? 'Salvando...' : 'Aplicar Branding'}
+                <Save className="w-4 h-4 mr-2" />{saving ? 'Salvando...' : 'Salvar dados gerais'}
               </Button>
             </CardContent>
           </Card>
+
+          <LocationsTab />
         </TabsContent>
 
         {/* ===== TEAM ===== */}
@@ -494,11 +486,11 @@ export default function SettingsPage() {
 
         {/* ===== TREATMENTS ===== */}
         <TabsContent value="treatments">
-          <TreatmentsPage embedded />
+          <ServicesPage embedded />
         </TabsContent>
 
-        <TabsContent value="anamnese">
-          <AnamneseTemplatesTab />
+        <TabsContent value="links">
+          <ProfessionalLinksTab initialProfessionalId={linksProfessionalId} />
         </TabsContent>
 
         <TabsContent value="whatsapp-ai">
@@ -506,48 +498,22 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ===== CATEGORIES ===== */}
-        <TabsContent value="categories">
-          <CategoriesTab />
-        </TabsContent>
-
-        {/* ===== COSTS ===== */}
-        <TabsContent value="costs">
-          <CostItemsTab />
-        </TabsContent>
-
-        {/* ===== PARAMETERS ===== */}
-        <TabsContent value="parameters">
-          <div className="space-y-6">
-            <ParametersTab />
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                <h3 className="text-sm font-semibold text-foreground">Alertas Dashboard</h3>
-              </div>
-              <DashboardAlertsTab />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ===== SALES GOALS ===== */}
-        <TabsContent value="goals">
-          <SalesGoalsTab />
-        </TabsContent>
-
         <TabsContent value="crm-kanban">
           <KanbanStagesTab />
         </TabsContent>
 
         <TabsContent value="professionals">
-          <ProfessionalsTab />
+          <ProfessionalsTab onManageLinks={(professionalId) => { setLinksProfessionalId(professionalId); setActiveTab('links'); }} />
         </TabsContent>
 
-        <TabsContent value="roles">
-          <RolesTab />
+        <TabsContent value="professional-rules"><ProfessionalRulesTab /></TabsContent>
+
+        <TabsContent value="healthcare">
+          <HealthcareSettingsTab />
         </TabsContent>
 
-        <TabsContent value="entities">
-          <ClassEntitiesTab />
+        <TabsContent value="registrations">
+          <RegistrationsTab />
         </TabsContent>
       </Tabs>
     </div>

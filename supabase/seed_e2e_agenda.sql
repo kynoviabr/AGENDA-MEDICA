@@ -4,7 +4,7 @@
 DO $$
 DECLARE
   v_clinic_id uuid;
-  v_professional_user_id uuid;
+  v_professional_id uuid;
   v_lead_id uuid;
   v_start timestamptz;
   v_end timestamptz;
@@ -18,7 +18,7 @@ BEGIN
     RAISE EXCEPTION 'Nenhuma clínica encontrada para seed E2E.';
   END IF;
 
-  SELECT user_id INTO v_professional_user_id
+  SELECT id INTO v_professional_id
   FROM public.professionals
   WHERE clinic_id = v_clinic_id
   ORDER BY created_at ASC
@@ -52,7 +52,7 @@ BEGIN
     appointment_type, start_time, end_time, scheduled_at, duration_minutes,
     status, notes, created_at, updated_at
   ) VALUES (
-    v_clinic_id, v_lead_id, NULL, NULL, v_professional_user_id,
+    v_clinic_id, v_lead_id, NULL, NULL, v_professional_id,
     'evaluation', v_start, v_end, v_start, 60,
     'scheduled', 'Seed E2E Agenda', now(), now()
   );

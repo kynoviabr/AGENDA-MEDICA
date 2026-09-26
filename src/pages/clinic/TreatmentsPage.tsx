@@ -30,6 +30,11 @@ interface TreatmentForm {
   num_sessions: string;
   renewal_enabled: boolean;
   renewal_trigger_days: string;
+  can_be_scheduled_online: boolean;
+  can_be_scheduled_by_ai: boolean;
+  requires_evaluation: boolean;
+  show_price_to_patient: boolean;
+  show_price_to_ai: boolean;
 }
 
 interface CostLineItem {
@@ -42,6 +47,8 @@ const emptyForm: TreatmentForm = {
   name: '', category_id: '', description: '', price: '',
   default_price: '', min_price: '', duration_minutes: '60', num_sessions: '1',
   renewal_enabled: true, renewal_trigger_days: '7',
+  can_be_scheduled_online: true, can_be_scheduled_by_ai: false, requires_evaluation: false,
+  show_price_to_patient: false, show_price_to_ai: false,
 };
 
 interface TreatmentsPageProps {
@@ -114,6 +121,11 @@ export default function TreatmentsPage({ embedded = false, readOnly = false }: T
         num_sessions: parseInt(data.num_sessions) || 1,
         renewal_enabled: data.renewal_enabled,
         renewal_trigger_days: Math.max(1, parseInt(data.renewal_trigger_days) || 7),
+        can_be_scheduled_online: data.can_be_scheduled_online,
+        can_be_scheduled_by_ai: data.can_be_scheduled_by_ai,
+        requires_evaluation: data.requires_evaluation,
+        show_price_to_patient: data.show_price_to_patient,
+        show_price_to_ai: data.show_price_to_ai,
         clinic_id: clinicId!,
       };
 
@@ -170,6 +182,11 @@ export default function TreatmentsPage({ embedded = false, readOnly = false }: T
       num_sessions: String(t.num_sessions),
       renewal_enabled: t.renewal_enabled ?? true,
       renewal_trigger_days: String(t.renewal_trigger_days ?? 7),
+      can_be_scheduled_online: t.can_be_scheduled_online ?? true,
+      can_be_scheduled_by_ai: t.can_be_scheduled_by_ai ?? false,
+      requires_evaluation: t.requires_evaluation ?? false,
+      show_price_to_patient: t.show_price_to_patient ?? false,
+      show_price_to_ai: t.show_price_to_ai ?? false,
     });
 
     if (canManage) {
@@ -465,6 +482,22 @@ export default function TreatmentsPage({ embedded = false, readOnly = false }: T
             <div className="space-y-2">
               <Label>Descrição</Label>
               <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} />
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+              <p className="text-sm font-semibold">Agenda e informações ao paciente</p>
+              {([
+                ['can_be_scheduled_online', 'Pode ser agendado online'],
+                ['can_be_scheduled_by_ai', 'A IA pode agendar'],
+                ['requires_evaluation', 'Exige avaliação prévia'],
+                ['show_price_to_patient', 'Exibir preço ao paciente'],
+                ['show_price_to_ai', 'A IA pode informar o preço'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center justify-between gap-3 text-sm">
+                  <span>{label}</span>
+                  <Checkbox checked={form[key]} onCheckedChange={value => setForm({ ...form, [key]: !!value })} />
+                </label>
+              ))}
             </div>
 
             {/* Cost Composition - Admin only */}

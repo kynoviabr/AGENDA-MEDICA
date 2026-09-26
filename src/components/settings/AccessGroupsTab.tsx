@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useStaffDirectory } from '@/hooks/useStaffDirectory';
 import { useToast } from '@/hooks/use-toast';
-import { MENU_PERMISSION_KEYS, type MenuPermissionKey } from '@/lib/accessPermissions';
+import { ACTIVE_MENU_PERMISSION_KEYS, type MenuPermissionKey } from '@/lib/accessPermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -268,7 +268,7 @@ export default function AccessGroupsTab() {
 
             {selectedGroup ? (
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {MENU_PERMISSION_KEYS.map((key) => (
+              {ACTIVE_MENU_PERMISSION_KEYS.map((key) => (
                   <label key={key} className="flex items-center gap-2 rounded border p-2 text-sm">
                     <Checkbox checked={selectedPermissions.has(key)} onCheckedChange={() => togglePermission(key)} />
                     <span>{LABELS[key]}</span>

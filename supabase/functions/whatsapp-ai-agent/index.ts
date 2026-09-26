@@ -1,5 +1,52 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  AiMediaProcessingError,
+  AiMessageIngestionService,
+  AudioMessageProcessor,
+  DEFAULT_AI_MODEL_CONFIGURATION,
+  DocumentMessageProcessor,
+  ImageMessageProcessor,
+  OpenAiConversationInterpreter,
+  OpenAiTranscriptionProvider,
+  OpenAiVisionProvider,
+  SupabaseAiClinicConfigLoader,
+  SupabaseAiConversationHistoryLoader,
+  SupabaseAiConversationStateRepository,
+  SupabaseAiUsageRecorder,
+  TextMessageProcessor,
+  WhatsappAuraAiBridge,
+  AuraAiOrchestrator,
+  AuraConversationEngine,
+  AuraSchedulingToolExecutor,
+  AdministrativeKnowledgeToolExecutor,
+  CompositeAiToolExecutor,
+  AuraToolCoordinator,
+  ConversationStateToolPlanner,
+  OpenAiToolResponseComposer,
+  SupabaseAiToolAuditRecorder,
+  SupabaseAiToolMutationGuard,
+  SupabaseAiKnowledgeAuditRecorder,
+  SupabaseAiSafetyAuditRecorder,
+  SupabaseAiHandoffRepository,
+  SupabaseAiConversationControlGuard,
+  AuraHandoffService,
+  canReleaseAiOutbound,
+  isGlobalAiDisabled,
+  normalizeOperationalCode,
+  decideWhatsappAiExecution,
+  type AiInboundMessage,
+  type AiLoadedMedia,
+  type AiMediaLoader,
+  type AiMessageType,
+  type AiSupabaseClientLike,
+  type WhatsappAiEngineMode,
+} from "../../../src/ai/index.ts";
+import { SchedulingService } from "../../../src/scheduling/services/SchedulingService.ts";
+import { InternalSchedulingProvider } from "../../../src/scheduling/providers/internal/InternalSchedulingProvider.ts";
+import { SupabaseInternalSchedulingDataSource } from "../../../src/scheduling/providers/internal/SupabaseInternalSchedulingDataSource.ts";
+import { AdministrativeKnowledgeService } from "../../../src/knowledge/services/AdministrativeKnowledgeService.ts";
+import { SupabaseAdministrativeKnowledgeRepository } from "../../../src/knowledge/repositories/SupabaseAdministrativeKnowledgeRepository.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,8 +57,12 @@ type InboundMessage = {
   messageId: string | null;
   from: string;
   text: string;
+  messageType: AiMessageType;
+  mediaId: string | null;
+  mimeType: string | null;
+  fileName: string | null;
   contactName: string | null;
-  raw: Record<string, unknown>;
+  phoneNumberId: string;
 };
 
 function normalizePhone(phone: string) {
@@ -25,6 +76,20 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
+async function recordOperational(admin: ReturnType<typeof createClient>, value: {
+  clinicId: string; conversationId?: string; correlationId: string;
+  type: string; component: string; outcome: 'success' | 'failure' | 'rejected';
+  errorCode?: string; errorCategory?: string; retryable?: boolean; latencyMs?: number;
+}) {
+  await admin.rpc('record_ai_operational_event', {
+    p_clinic_id: value.clinicId, p_conversation_id: value.conversationId || null,
+    p_correlation_id: value.correlationId, p_channel: 'whatsapp', p_event_type: value.type,
+    p_component: value.component, p_outcome: value.outcome,
+    p_error_code: value.errorCode || null, p_error_category: value.errorCategory || null,
+    p_retryable: value.retryable ?? null, p_latency_ms: value.latencyMs ?? null,
+  }).catch(() => undefined);
+}
+
 function extractInboundMessages(body: Record<string, unknown>): InboundMessage[] {
   const entry = Array.isArray(body.entry) ? body.entry : [];
   const messages: InboundMessage[] = [];
@@ -35,11 +100,16 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
       const value = change?.value || {};
       const contacts = Array.isArray(value.contacts) ? value.contacts : [];
       const rawMessages = Array.isArray(value.messages) ? value.messages : [];
+      const phoneNumberId = String(value?.metadata?.phone_number_id || "");
 
       for (const rawMessage of rawMessages) {
-        const text = String(rawMessage?.text?.body || "").trim();
+        const messageType = String(rawMessage?.type || "text") as AiMessageType;
+        if (!["text", "audio", "image", "document"].includes(messageType)) continue;
+        const mediaPayload = messageType === "text" ? null : rawMessage?.[messageType];
+        const text = messageType === "text" ? String(rawMessage?.text?.body || "").trim() : "";
         const from = normalizePhone(String(rawMessage?.from || ""));
-        if (!text || !from) continue;
+        const mediaId = mediaPayload?.id ? String(mediaPayload.id) : null;
+        if ((!text && !mediaId) || !from || !phoneNumberId) continue;
 
         const contact = contacts.find((item: Record<string, unknown>) => {
           return normalizePhone(String(item?.wa_id || "")) === from;
@@ -49,8 +119,12 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
           messageId: rawMessage?.id ? String(rawMessage.id) : null,
           from,
           text,
+          messageType,
+          mediaId,
+          mimeType: mediaPayload?.mime_type ? String(mediaPayload.mime_type) : null,
+          fileName: mediaPayload?.filename ? String(mediaPayload.filename) : null,
           contactName: contact?.profile?.name ? String(contact.profile.name).trim() : null,
-          raw: rawMessage,
+          phoneNumberId,
         });
       }
     }
@@ -59,9 +133,37 @@ function extractInboundMessages(body: Record<string, unknown>): InboundMessage[]
   return messages;
 }
 
+class MetaWhatsAppMediaLoader implements AiMediaLoader {
+  constructor(private readonly accessToken: string, private readonly graphVersion: string) {}
+
+  async load(mediaId: string, signal?: AbortSignal): Promise<AiLoadedMedia> {
+    const metadataResponse = await fetch(`https://graph.facebook.com/${this.graphVersion}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${this.accessToken}` }, signal,
+    });
+    if (!metadataResponse.ok) throw new AiMediaProcessingError("WhatsApp media metadata could not be loaded.");
+    const metadata = await metadataResponse.json() as Record<string, unknown>;
+    const mediaUrl = typeof metadata.url === "string" ? metadata.url : "";
+    if (!mediaUrl) throw new AiMediaProcessingError("WhatsApp media URL was not returned.");
+    const declaredSize = Number(metadata.file_size || 0);
+    if (declaredSize > 16 * 1024 * 1024) throw new AiMediaProcessingError("WhatsApp media exceeds the platform limit.");
+
+    const mediaResponse = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${this.accessToken}` }, signal,
+    });
+    if (!mediaResponse.ok) throw new AiMediaProcessingError("WhatsApp media could not be downloaded.");
+    const bytes = new Uint8Array(await mediaResponse.arrayBuffer());
+    if (bytes.byteLength > 16 * 1024 * 1024) throw new AiMediaProcessingError("WhatsApp media exceeds the platform limit.");
+    return {
+      bytes,
+      size: bytes.byteLength,
+      mimeType: String(metadata.mime_type || mediaResponse.headers.get("content-type") || "application/octet-stream"),
+    };
+  }
+}
+
 async function verifyMetaSignature(req: Request, rawBody: string) {
   const appSecret = Deno.env.get("META_APP_SECRET");
-  if (!appSecret) return true;
+  if (!appSecret) return false;
 
   const signature = req.headers.get("x-hub-signature-256") || "";
   const expectedPrefix = "sha256=";
@@ -80,14 +182,29 @@ async function verifyMetaSignature(req: Request, rawBody: string) {
   return signature.slice(expectedPrefix.length) === hash;
 }
 
-async function sendWhatsAppText(to: string, body: string) {
-  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  if (!accessToken || !phoneNumberId) {
-    throw new Error("WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured");
-  }
+function fromBase64(value: string) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
 
-  const response = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+async function decryptToken(payload: string) {
+  const secret = Deno.env.get("WHATSAPP_TOKEN_ENCRYPTION_KEY");
+  if (!secret || secret.length < 32) throw new Error("platform_encryption_key_not_configured");
+  const [version, ivValue, encryptedValue] = payload.split(".");
+  if (version !== "v1" || !ivValue || !encryptedValue) throw new Error("invalid_connection_token");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  const key = await crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["decrypt"]);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64(ivValue) },
+    key,
+    fromBase64(encryptedValue),
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+async function sendWhatsAppText(to: string, body: string, accessToken: string, phoneNumberId: string) {
+
+  const graphVersion = Deno.env.get("META_GRAPH_API_VERSION") || "v23.0";
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -99,11 +216,12 @@ async function sendWhatsAppText(to: string, body: string) {
       type: "text",
       text: { preview_url: false, body },
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`meta_cloud_api ${response.status}: ${JSON.stringify(payload)}`);
+    throw new Error(`meta_cloud_api_${response.status}`);
   }
   return payload;
 }
@@ -169,11 +287,12 @@ async function generateLeadReply(params: {
       max_output_tokens: 220,
       store: false,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`openai ${response.status}: ${JSON.stringify(payload)}`);
+    throw new Error(`openai_${response.status}`);
   }
 
   const text = extractOpenAIText(payload);
@@ -183,6 +302,112 @@ async function generateLeadReply(params: {
     text,
     model,
     usage: payload.usage || {},
+  };
+}
+
+function createAuraBridge(
+  admin: ReturnType<typeof createClient>,
+  accessToken: string,
+  modelOverride?: string | null,
+) {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("openai_key_not_configured");
+  const graphVersion = Deno.env.get("META_GRAPH_API_VERSION") || "v23.0";
+  const mediaLoader = new MetaWhatsAppMediaLoader(accessToken, graphVersion);
+  const transcription = new OpenAiTranscriptionProvider(
+    { apiKey },
+    Deno.env.get("OPENAI_TRANSCRIPTION_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.transcriptionModel,
+  );
+  const vision = new OpenAiVisionProvider(
+    { apiKey },
+    Deno.env.get("OPENAI_VISION_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.visionModel,
+  );
+  const ingestion = new AiMessageIngestionService({
+    text: new TextMessageProcessor(),
+    audio: new AudioMessageProcessor(mediaLoader, transcription),
+    image: new ImageMessageProcessor(mediaLoader, vision),
+    document: new DocumentMessageProcessor(),
+  });
+  const aiClient = admin as unknown as AiSupabaseClientLike;
+  const usageRecorder = new SupabaseAiUsageRecorder(aiClient);
+  const stateRepository = new SupabaseAiConversationStateRepository(aiClient);
+  const handoffRepository = new SupabaseAiHandoffRepository(aiClient);
+  const conversationModel = modelOverride || Deno.env.get("OPENAI_MODEL") || DEFAULT_AI_MODEL_CONFIGURATION.llmModel;
+  const conversationEngine = new AuraConversationEngine(
+    new OpenAiConversationInterpreter({ apiKey }, conversationModel),
+    stateRepository,
+    new SupabaseAiConversationHistoryLoader(aiClient),
+    usageRecorder,
+    {
+      historyLimit: DEFAULT_AI_MODEL_CONFIGURATION.historyLimit,
+      executionPolicy: { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
+    },
+  );
+  const schedulingService = new SchedulingService(new InternalSchedulingProvider(
+    new SupabaseInternalSchedulingDataSource(admin as never),
+  ));
+  const toolAudit = new SupabaseAiToolAuditRecorder(aiClient);
+  const knowledgeService = new AdministrativeKnowledgeService(
+    new SupabaseAdministrativeKnowledgeRepository(admin as never),
+  );
+  const toolCoordinator = new AuraToolCoordinator(
+    new ConversationStateToolPlanner(),
+    new CompositeAiToolExecutor(
+      new AuraSchedulingToolExecutor(
+        schedulingService,
+        undefined,
+        toolAudit,
+        undefined,
+        new SupabaseAiToolMutationGuard(aiClient),
+      ),
+      new AdministrativeKnowledgeToolExecutor(
+        knowledgeService,
+        undefined,
+        toolAudit,
+        new SupabaseAiKnowledgeAuditRecorder(aiClient),
+      ),
+    ),
+    new OpenAiToolResponseComposer({ apiKey }, conversationModel),
+    stateRepository,
+    usageRecorder,
+    { timeoutMs: DEFAULT_AI_MODEL_CONFIGURATION.llmTimeoutMs, maxAttempts: 2 },
+    () => new Date(),
+    new SupabaseAiConversationControlGuard(handoffRepository),
+  );
+  const orchestrator = new AuraAiOrchestrator(
+    conversationEngine,
+    new SupabaseAiClinicConfigLoader(aiClient),
+    usageRecorder,
+    {},
+    toolCoordinator,
+    undefined,
+    new SupabaseAiSafetyAuditRecorder(aiClient),
+    new AuraHandoffService(handoffRepository),
+  );
+  return new WhatsappAuraAiBridge(ingestion, orchestrator, usageRecorder);
+}
+
+function toAuraInbound(
+  inbound: InboundMessage,
+  clinicId: string,
+  conversationId: string,
+): AiInboundMessage {
+  return {
+    id: inbound.messageId || crypto.randomUUID(),
+    clinicId,
+    conversationId,
+    channel: "whatsapp",
+    senderId: inbound.from,
+    messageType: inbound.messageType,
+    receivedAt: new Date().toISOString(),
+    text: inbound.messageType === "text" ? inbound.text : undefined,
+    media: inbound.messageType === "text" || !inbound.mediaId ? undefined : {
+      mediaId: inbound.mediaId,
+      mimeType: inbound.mimeType || "application/octet-stream",
+      kind: inbound.messageType,
+      source: "whatsapp",
+      fileName: inbound.fileName || undefined,
+    },
   };
 }
 
@@ -204,9 +429,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const clinicId = Deno.env.get("WHATSAPP_AI_DEFAULT_CLINIC_ID");
     if (!supabaseUrl || !serviceRole) throw new Error("SUPABASE env vars not configured");
-    if (!clinicId) throw new Error("WHATSAPP_AI_DEFAULT_CLINIC_ID not configured");
 
     const rawBody = await req.text();
     if (!(await verifyMetaSignature(req, rawBody))) {
@@ -219,32 +442,32 @@ serve(async (req) => {
       return json({ ok: true, ignored: true, reason: "no_text_messages" });
     }
 
-    const admin = createClient(supabaseUrl, serviceRole);
-    const processed: Record<string, unknown>[] = [];
+    const processing = (async () => {
+      const admin = createClient(supabaseUrl, serviceRole);
+      const processed: Record<string, unknown>[] = [];
 
-    const { data: clinic, error: clinicError } = await admin
-      .from("clinics")
-      .select("id, name")
-      .eq("id", clinicId)
-      .maybeSingle();
-    if (clinicError) throw clinicError;
-    if (!clinic) throw new Error("clinic_not_found");
+      for (const inbound of inboundMessages) {
+      const { data: connection, error: connectionError } = await admin
+        .from("whatsapp_connections")
+        .select("clinic_id, phone_number_id, token_ciphertext")
+        .eq("phone_number_id", inbound.phoneNumberId)
+        .eq("status", "connected")
+        .maybeSingle();
+      if (connectionError) throw connectionError;
+      if (!connection) {
+        processed.push({ messageId: inbound.messageId, status: "unknown_phone_number" });
+        continue;
+      }
+      const clinicId = connection.clinic_id;
+      const accessToken = await decryptToken(connection.token_ciphertext);
+      const [{ data: clinic, error: clinicError }, { data: settings }, { data: treatments }] = await Promise.all([
+        admin.from("clinics").select("id, name").eq("id", clinicId).maybeSingle(),
+        admin.from("whatsapp_ai_settings").select("is_enabled, openai_model, default_goal, handoff_message, ai_engine_mode, preferred_language, response_style").eq("clinic_id", clinicId).maybeSingle(),
+        admin.from("treatments").select("name").eq("clinic_id", clinicId).eq("is_active", true).order("name").limit(20),
+      ]);
+      if (clinicError) throw clinicError;
+      if (!clinic) throw new Error("clinic_not_found");
 
-    const { data: settings } = await admin
-      .from("whatsapp_ai_settings")
-      .select("is_enabled, openai_model, default_goal, handoff_message")
-      .eq("clinic_id", clinicId)
-      .maybeSingle();
-
-    const { data: treatments } = await admin
-      .from("treatments")
-      .select("name")
-      .eq("clinic_id", clinicId)
-      .eq("is_active", true)
-      .order("name")
-      .limit(20);
-
-    for (const inbound of inboundMessages) {
       if (inbound.messageId) {
         const { data: existing } = await admin
           .from("whatsapp_ai_messages")
@@ -306,6 +529,11 @@ serve(async (req) => {
         last_inbound_at: new Date().toISOString(),
         last_message_at: new Date().toISOString(),
         metadata: { provider: "meta_cloud_api" },
+        ...(currentConversation?.control_mode === "closed" ? {
+          control_mode: "ai_active", status: "open", ai_enabled: true,
+          active_handoff_id: null, assigned_user_id: null, ai_failure_count: 0,
+          control_revision: Number(currentConversation.control_revision || 0) + 1,
+        } : {}),
       };
 
       const { data: conversation, error: conversationError } = currentConversation
@@ -326,6 +554,17 @@ serve(async (req) => {
           .single();
 
       if (conversationError) throw conversationError;
+      const correlationId = crypto.randomUUID();
+
+      if (currentConversation?.control_mode === "closed") {
+        const { data: lastHandoff } = await admin.from("ai_conversation_handoffs")
+          .select("id,reason").eq("clinic_id", clinicId).eq("conversation_id", conversation.id)
+          .eq("status", "resolved").order("resolved_at", { ascending: false }).limit(1).maybeSingle();
+        if (lastHandoff) await admin.from("ai_handoff_events").insert({
+          clinic_id: clinicId, conversation_id: conversation.id, handoff_id: lastHandoff.id,
+          action: "reopened", actor_user_id: null, reason: "new_patient_inbound",
+        });
+      }
 
       const { error: inboundInsertError } = await admin.from("whatsapp_ai_messages").insert({
         clinic_id: clinicId,
@@ -333,41 +572,150 @@ serve(async (req) => {
         lead_id: lead.id,
         direction: "inbound",
         role: "user",
-        body: inbound.text,
+        body: inbound.text || `[${inbound.messageType}]`,
         provider_message_id: inbound.messageId,
-        raw_payload: inbound.raw,
+        raw_payload: { provider: "meta_cloud_api", message_type: inbound.messageType },
+        message_origin: "patient",
       });
       if (inboundInsertError) throw inboundInsertError;
 
-      if (settings?.is_enabled === false || !conversation.ai_enabled || conversation.status !== "open") {
+      await recordOperational(admin, {
+        clinicId, conversationId: conversation.id, correlationId,
+        type: 'whatsapp_inbound_received', component: 'whatsapp', outcome: 'success',
+      });
+
+      if (isGlobalAiDisabled(Deno.env.get('AURA_AI_GLOBAL_DISABLED'))) {
+        processed.push({ messageId: inbound.messageId, conversationId: conversation.id, status: 'stored_without_reply', reason: 'global_ai_disabled' });
+        continue;
+      }
+
+      if (settings?.is_enabled === false || !conversation.ai_enabled || conversation.status !== "open" || conversation.control_mode !== "ai_active") {
         processed.push({
           messageId: inbound.messageId,
           leadId: lead.id,
           conversationId: conversation.id,
           status: "stored_without_reply",
-          reason: settings?.is_enabled === false ? "clinic_ai_disabled" : conversation.ai_enabled ? conversation.status : "ai_disabled",
+          reason: settings?.is_enabled === false ? "clinic_ai_disabled" : conversation.control_mode !== "ai_active" ? conversation.control_mode : conversation.ai_enabled ? conversation.status : "ai_disabled",
         });
         continue;
       }
 
-      const { data: recentMessages } = await admin
-        .from("whatsapp_ai_messages")
-        .select("direction, body")
-        .eq("conversation_id", conversation.id)
-        .order("created_at", { ascending: false })
-        .limit(10);
+      const engineMode = (settings?.ai_engine_mode || "legacy") as WhatsappAiEngineMode;
+      const decision = decideWhatsappAiExecution(engineMode);
+      let auraReply: Awaited<ReturnType<WhatsappAuraAiBridge["process"]>> | null = null;
 
-      const aiReply = await generateLeadReply({
-        clinicName: clinic.name,
-        treatments: (treatments || []).map((item: { name: string }) => item.name),
-        recentMessages: [...(recentMessages || [])].reverse(),
-        userText: inbound.text,
-        modelOverride: settings?.openai_model,
-        defaultGoal: settings?.default_goal,
-        handoffMessage: settings?.handoff_message,
-      });
+      if (decision.runAura) {
+        const aiStartedAt = Date.now();
+        await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'ai_processing_started', component: 'conversation', outcome: 'success' });
+        try {
+          auraReply = await createAuraBridge(admin, accessToken, settings?.openai_model).process({
+            clinicId,
+            conversationId: conversation.id,
+            channel: "whatsapp",
+            correlationId,
+            leadId: lead.id,
+          }, toAuraInbound(inbound, clinicId, conversation.id));
+          await recordOperational(admin, {
+            clinicId, conversationId: conversation.id, correlationId,
+            type: 'ai_processing_completed', component: 'conversation', outcome: 'success', latencyMs: Date.now() - aiStartedAt,
+          });
+          if (!decision.sendAura) {
+            console.info("aura_ai_shadow_completed", {
+              correlationId, clinicId, conversationId: conversation.id,
+              messageType: inbound.messageType, intent: auraReply.conversationIntent,
+              needsClarification: auraReply.requiresClarification,
+              safetyDisposition: auraReply.safetyDisposition,
+            });
+          }
+        } catch (error) {
+          const errorCode = typeof error === "object" && error && "code" in error
+            ? normalizeOperationalCode((error as { code: unknown }).code, 'AI_PROCESSING_FAILED')
+            : "AI_PROCESSING_FAILED";
+          if (errorCode === "AI_CONVERSATION_SUSPENDED") {
+            processed.push({
+              messageId: inbound.messageId, leadId: lead.id, conversationId: conversation.id,
+              status: "stored_without_reply", reason: "conversation_control_suspended",
+            });
+            continue;
+          }
+          console.error("aura_ai_processing_failed", {
+            correlationId, clinicId, conversationId: conversation.id,
+            messageType: inbound.messageType, errorCode,
+          });
+          await recordOperational(admin, {
+            clinicId, conversationId: conversation.id, correlationId,
+            type: 'ai_processing_failed', component: 'conversation', outcome: 'failure',
+            errorCode, errorCategory: errorCode === 'AI_TIMEOUT' ? 'provider_timeout' : 'unknown', retryable: errorCode === 'AI_TIMEOUT', latencyMs: Date.now() - aiStartedAt,
+          });
+          if (decision.sendAura) {
+            auraReply = {
+              text: settings?.handoff_message || "Não consegui processar sua mensagem agora. Vou chamar uma pessoa da equipe para ajudar.",
+              provider: "aura_fallback",
+              model: "controlled-fallback",
+              usage: {}, latencyMs: 0, safetyDisposition: "requires_handoff",
+              requiresClarification: true, requiresHandoff: true,
+            };
+          }
+        }
+      }
 
-      const whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text);
+      let legacyReply: Awaited<ReturnType<typeof generateLeadReply>> | null = null;
+      if (decision.runLegacy && inbound.messageType === "text") {
+        const { data: recentMessages } = await admin
+          .from("whatsapp_ai_messages")
+          .select("direction, body")
+          .eq("clinic_id", clinicId)
+          .eq("conversation_id", conversation.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        legacyReply = await generateLeadReply({
+          clinicName: clinic.name,
+          treatments: (treatments || []).map((item: { name: string }) => item.name),
+          recentMessages: [...(recentMessages || [])].reverse(),
+          userText: inbound.text,
+          modelOverride: settings?.openai_model,
+          defaultGoal: settings?.default_goal,
+          handoffMessage: settings?.handoff_message,
+        });
+      }
+
+      const aiReply = decision.sendAura ? auraReply : legacyReply;
+      if (!aiReply) {
+        processed.push({
+          messageId: inbound.messageId, leadId: lead.id, conversationId: conversation.id,
+          status: "stored_without_reply", reason: "engine_mode_does_not_send_this_media_type",
+        });
+        continue;
+      }
+
+      const { data: outboundFence } = await admin.from("whatsapp_ai_conversations")
+        .select("control_mode,active_handoff_id")
+        .eq("clinic_id", clinicId).eq("id", conversation.id).maybeSingle();
+      if (!canReleaseAiOutbound({
+        mode: outboundFence?.control_mode || "closed",
+        activeHandoffId: outboundFence?.active_handoff_id,
+      }, aiReply)) {
+        processed.push({
+          messageId: inbound.messageId, leadId: lead.id, conversationId: conversation.id,
+          status: "stored_without_reply", reason: "ai_outbound_fence_blocked",
+        });
+        continue;
+      }
+
+      const outboundStartedAt = Date.now();
+      await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_attempt', component: 'outbound', outcome: 'success' });
+      let whatsappResponse: Awaited<ReturnType<typeof sendWhatsAppText>>;
+      try {
+        whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
+        await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_success', component: 'outbound', outcome: 'success', latencyMs: Date.now() - outboundStartedAt });
+      } catch (error) {
+        await recordOperational(admin, {
+          clinicId, conversationId: conversation.id, correlationId, type: 'outbound_failure', component: 'outbound', outcome: 'failure',
+          errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_SEND_FAILURE'),
+          errorCategory: 'whatsapp_send_failure', retryable: true, latencyMs: Date.now() - outboundStartedAt,
+        });
+        throw new Error('whatsapp_send_failure');
+      }
       const outboundMessageId = whatsappResponse?.messages?.[0]?.id ? String(whatsappResponse.messages[0].id) : null;
       const usage = aiReply.usage as Record<string, number | undefined>;
 
@@ -379,11 +727,12 @@ serve(async (req) => {
         role: "assistant",
         body: aiReply.text,
         provider_message_id: outboundMessageId,
-        raw_payload: whatsappResponse,
+        raw_payload: { provider: "meta_cloud_api", message_type: "text" },
         ai_model: aiReply.model,
-        prompt_tokens: usage.input_tokens || usage.prompt_tokens || null,
-        completion_tokens: usage.output_tokens || usage.completion_tokens || null,
-        total_tokens: usage.total_tokens || null,
+        message_origin: "ai",
+        prompt_tokens: usage.inputTokens || usage.input_tokens || usage.prompt_tokens || null,
+        completion_tokens: usage.outputTokens || usage.output_tokens || usage.completion_tokens || null,
+        total_tokens: usage.totalTokens || usage.total_tokens || null,
       });
 
       await admin
@@ -399,7 +748,7 @@ serve(async (req) => {
         clinic_id: clinicId,
         lead_id: lead.id,
         type: "whatsapp_ai_reply",
-        notes: `Lead: ${inbound.text}\n\nIA: ${aiReply.text}`,
+        notes: `Resposta administrativa ${engineMode === 'active' ? 'Aura' : 'legacy'} registrada. Tipo: ${inbound.messageType}. Correlação: ${correlationId}.`,
       });
 
       processed.push({
@@ -408,10 +757,20 @@ serve(async (req) => {
         conversationId: conversation.id,
         status: "replied",
       });
-    }
+      }
 
-    return json({ ok: true, processed });
+      console.info("whatsapp_ai_batch_completed", { count: processed.length, processed });
+    })().catch((error) => {
+      console.error("whatsapp_ai_batch_failed", {
+        errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_BATCH_FAILED'),
+        messageCount: inboundMessages.length,
+      });
+    });
+
+    EdgeRuntime.waitUntil(processing);
+    return json({ ok: true, accepted: inboundMessages.length });
   } catch (error) {
-    return json({ ok: false, error: (error as Error).message }, 500);
+    console.error('whatsapp_ai_request_failed', { errorCode: normalizeOperationalCode(error instanceof Error ? error.message : undefined, 'WHATSAPP_REQUEST_FAILED') });
+    return json({ ok: false, reason: "internal_error" }, 500);
   }
 });

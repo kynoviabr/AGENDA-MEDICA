@@ -13,8 +13,10 @@ dist-ssr
 *.local
 playwright-report-e2e/
 test-results/
+artifacts/ai-evals/
 mockups/.video-tmp/
 supabase/.temp/
+supabase/.branches/
 tmp-settings.png
 
 # Editor directories and files
@@ -33,3 +35,4 @@ tmp-settings.png
 .env
 .env.local
 .env.*.local
+.env.e2e

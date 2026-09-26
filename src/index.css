@@ -26,30 +26,30 @@
     --popover: 0 0% 100%;
     --popover-foreground: 210 72% 15%;
 
-    /* BRAND - Stripe purple (default; overridden per clinic via BrandingContext) */
-    --primary: 243 100% 68%;          /* #635bff */
+    /* BRAND - Agenda Med original (overridden per clinic via BrandingContext) */
+    --primary: 172 65% 29%;           /* #1a7a6d */
     --primary-foreground: 0 0% 100%;
-    --primary-dark: 243 75% 59%;      /* #4f46e5 */
-    --primary-light: 243 100% 95%;    /* #e8e7ff */
+    --primary-dark: 172 65% 19%;
+    --primary-light: 172 75% 95%;
 
-    --color-purple: 243 100% 68%;
-    --color-purple-dark: 243 75% 59%;
-    --color-purple-light: 243 100% 95%;
+    --color-purple: 172 65% 29%;
+    --color-purple-dark: 172 65% 19%;
+    --color-purple-light: 172 75% 95%;
     --color-cyan: 190 100% 50%;       /* #00d4ff */
     --color-green: 153 100% 42%;      /* #00d97e */
 
     /* SECONDARY - subtle surface */
-    --secondary: 210 38% 96%;         /* #f0f5fa */
-    --secondary-foreground: 210 72% 15%;
+    --secondary: 36 39% 94%;          /* #f5f0e8 */
+    --secondary-foreground: 172 65% 19%;
 
     --muted: 210 38% 96%;
     --muted-foreground: 213 19% 33%;  /* #425466 */
     --text-secondary: 213 19% 33%;    /* #425466 */
     --text-muted: 211 17% 57%;        /* #8898aa */
 
-    /* ACCENT - using Stripe cyan as accent default */
-    --accent: 190 100% 50%;
-    --accent-foreground: 210 72% 15%;
+    /* ACCENT - Agenda Med original gold */
+    --accent: 38 63% 48%;             /* #c8912e */
+    --accent-foreground: 0 0% 100%;
 
     /* SEMANTIC */
     --destructive: 348 78% 49%;       /* #df1b41 */
@@ -73,7 +73,7 @@
     --border: 214 32% 91%;            /* #e3e8ee */
     --input: 214 32% 91%;
     --border-hover: 214 14% 79%;      /* #c1c9d2 */
-    --ring: 243 100% 68%;             /* purple focus ring */
+    --ring: 172 65% 29%;
 
     /* RADIUS - Stripe scale */
     --radius: 0.625rem;               /* 10px - card default */
@@ -84,14 +84,14 @@
     --radius-pill: 9999px;
 
     /* BRAND tokens (overridden dynamically per clinic) */
-    --brand-primary: 243 100% 68%;
-    --brand-secondary: 210 38% 96%;
-    --brand-accent: 190 100% 50%;
+    --brand-primary: 172 65% 29%;
+    --brand-secondary: 36 39% 94%;
+    --brand-accent: 38 63% 48%;
     --brand-primary-contrast: #ffffff;
 
     /* GRADIENTS - reserved for hero/marketing only */
-    --gradient-primary: linear-gradient(135deg, hsl(243 100% 68%), hsl(243 75% 59%));
-    --gradient-accent: linear-gradient(135deg, hsl(190 100% 50%), hsl(243 100% 68%));
+    --gradient-primary: linear-gradient(135deg, hsl(172 65% 29%), hsl(172 65% 19%));
+    --gradient-accent: linear-gradient(135deg, hsl(38 63% 48%), hsl(38 63% 38%));
     --gradient-hero: linear-gradient(135deg, hsl(210 72% 15%) 0%, hsl(243 75% 25%) 100%);
     --gradient-surface: linear-gradient(180deg, hsl(210 38% 97%), hsl(210 38% 95%));
 
@@ -116,7 +116,7 @@
     /* SIDEBAR - Stripe navy */
     --sidebar-background: 210 72% 15%;          /* #0a2540 */
     --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 243 100% 68%;
+    --sidebar-primary: 172 65% 29%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 50% 22%;              /* hover bg */
     --sidebar-accent-foreground: 0 0% 100%;

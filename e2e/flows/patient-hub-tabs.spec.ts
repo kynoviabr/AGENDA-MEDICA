@@ -15,15 +15,9 @@ test.describe('Fluxo E2E - Hub do Paciente', () => {
     await expect(page.locator('main h1').first()).toBeVisible();
 
     const tabs = [
-      { name: 'Dados', expected: /informações pessoais/i },
-      { name: 'Anamnese', expected: /anamnese/i },
-      { name: 'Agenda', expected: /agendamentos/i },
-      { name: 'Propostas', expected: /propostas do paciente|nenhuma proposta/i },
-      { name: 'Contratos', expected: /contratos do paciente|nenhum contrato/i },
-      { name: 'Sessões', expected: /sessões realizadas|nenhuma sessão/i },
-      { name: 'Evolução', expected: /evolução|nenhuma evolução/i },
-      { name: 'Fotos', expected: /fotos|nenhuma foto/i },
-      { name: 'Feedback', expected: /feedback|sem feedback/i },
+      { name: 'Dados administrativos', expected: /informações cadastrais/i },
+      { name: 'Agendamentos', expected: /próximos agendamentos/i },
+      { name: 'Interações', expected: /contexto administrativo de origem/i },
     ];
 
     for (const tab of tabs) {

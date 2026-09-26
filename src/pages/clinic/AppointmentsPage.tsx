@@ -4,22 +4,24 @@ import { supabase } from '@/integrations/supabase/client';
 import { useBranding } from '@/contexts/BrandingContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { useStaffDirectory } from '@/hooks/useStaffDirectory';
+import { useAgendaProfessionals } from '@/hooks/useAgendaProfessionals';
 import { PageHeader } from '@/components/ui/page-header';
 import { BrandButton } from '@/components/ui/brand-button';
 import { BrandBadge, type BadgeStatus } from '@/components/ui/brand-badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Check, X, AlertTriangle, ClipboardList, UserPlus, CalendarCheck2, Clock3, CheckCircle2, CalendarCog, Lock, Trash2, BellRing, Stethoscope, MapPin, MoreHorizontal, RefreshCw, Search, CalendarRange } from 'lucide-react';
 import QuickPatientModal from '@/components/patient/QuickPatientModal';
-import { AnamneseAlertBanner } from '@/components/anamnese/AnamneseAlertBanner';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek,
   isSameMonth, isSameDay, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
@@ -28,12 +30,27 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/types';
+import { getAgendaErrorMessage } from '@/lib/agenda/errors';
+import { AgendaStatCard } from '@/components/agenda/AgendaStatCard';
+import { AgendaSidePanel } from '@/components/agenda/AgendaSidePanel';
+import WeeklyHoursEditor from '@/components/settings/WeeklyHoursEditor';
+import { emptyWeeklyHours, workingHoursPolicy, validateWeeklyOperatingHours, type OperatingPeriod, type ScheduleException, type WeeklyOperatingHours } from '@/scheduling/operatingHours';
+
+type AgendaRpcError = { message: string; code?: string; details?: string; hint?: string };
+type AgendaRpcResult<T> = { data: T | null; error: AgendaRpcError | null };
+const callAgendaRpc = <T,>(name: string, args: Record<string, unknown>) =>
+  (supabase.rpc as unknown as (functionName: string, parameters: Record<string, unknown>) => Promise<AgendaRpcResult<T>>)(name, args);
 
 const professionalColors = [
   'hsl(var(--primary))', 'hsl(210 80% 50%)', 'hsl(280 60% 50%)',
   'hsl(30 80% 50%)', 'hsl(160 60% 40%)', 'hsl(350 70% 50%)',
   'hsl(190 70% 40%)', 'hsl(60 70% 40%)',
 ];
+
+const timeToMinutes = (value: string) => {
+  const [hours = 0, minutes = 0] = value.slice(0, 5).split(':').map(Number);
+  return hours * 60 + minutes;
+};
 
 const statusConfig: Record<string, { label: string; badge: BadgeStatus; style: string }> = {
   scheduled: { label: 'Agendado', badge: 'scheduled', style: 'border-l-4 border-l-info' },
@@ -45,19 +62,29 @@ const statusConfig: Record<string, { label: string; badge: BadgeStatus; style: s
   in_progress: { label: 'Em andamento', badge: 'in_progress', style: 'border-l-4 border-l-info' },
 };
 
-type ViewMode = 'month' | 'week' | 'day';
+type ViewMode = 'month' | 'week' | 'day' | 'doctors-day';
+type AppointmentType = 'consultation' | 'return' | 'evaluation' | 'post_operative';
+const appointmentTypeLabels: Record<AppointmentType | 'session', string> = {
+  consultation: 'Consulta',
+  return: 'Retorno',
+  evaluation: 'Avaliação',
+  post_operative: 'Pós-Operatório',
+  session: 'Consulta',
+};
 type WaitlistWindowType = Database['public']['Enums']['waitlist_window_type'];
 type WaitlistPriority = Database['public']['Enums']['waitlist_priority'];
 type WaitlistContactPreference = Database['public']['Enums']['waitlist_contact_preference'];
 type WaitlistTargetType = 'lead' | 'patient';
 type AppointmentRow = Database['public']['Tables']['appointments']['Row'] & {
-  appointment_type?: 'session' | 'evaluation' | null;
+  appointment_type?: AppointmentType | 'session' | null;
   scheduled_at?: string | null;
   duration_minutes?: number | null;
   lead_id?: string | null;
   is_batch?: boolean | null;
   patients?: {
     full_name?: string | null;
+    phone?: string | null;
+    cpf?: string | null;
     dissatisfaction_flag?: boolean | null;
     dissatisfaction_level?: string | null;
     dissatisfaction_reason?: string | null;
@@ -73,12 +100,43 @@ type WaitlistRow = Database['public']['Tables']['appointment_waitlist']['Row'] &
 type WaitlistNotificationRow = Database['public']['Tables']['waitlist_notifications']['Row'] & {
   appointment_waitlist?: WaitlistRow | null;
 };
-type ReminderRow = Database['public']['Tables']['appointment_reminders']['Row'];
-type WhatsAppCommandLogRow = Database['public']['Tables']['whatsapp_command_logs']['Row'];
-type AgendaJobExecutionRow = Database['public']['Tables']['agenda_job_executions']['Row'];
-type ContractLite = Pick<Database['public']['Tables']['contracts']['Row'], 'id' | 'patient_id' | 'proposal_id' | 'status'>;
-type ProposalItemLite = Pick<Database['public']['Tables']['proposal_items']['Row'], 'proposal_id' | 'treatment_id'>;
-type SessionRecordLite = Pick<Database['public']['Tables']['session_records']['Row'], 'patient_id' | 'treatment_id'>;
+type AgendaSessionPreferences = {
+  viewMode?: ViewMode;
+  currentDate?: string;
+  locationId?: string;
+  professional?: string;
+  professionalIds?: string[];
+  status?: string;
+};
+const agendaPreferenceKey = 'agenda-med:session-preferences';
+function loadAgendaPreferences(): AgendaSessionPreferences {
+  try {
+    return JSON.parse(sessionStorage.getItem(agendaPreferenceKey) || '{}') as AgendaSessionPreferences;
+  } catch {
+    return {};
+  }
+}
+const defaultHalfHourSlots = Array.from({ length: 22 }, (_, index) => {
+  const minutes = 8 * 60 + index * 30;
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+});
+function createHalfHourSlots(start: string, end: string) {
+  const startMinutes = Math.floor(timeToMinutes(start) / 30) * 30;
+  const endMinutes = Math.ceil(timeToMinutes(end) / 30) * 30;
+  return Array.from({ length: Math.max(0, (endMinutes - startMinutes) / 30) }, (_, index) => {
+    const value = startMinutes + index * 30;
+    return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  });
+}
+function isoDateInTimezone(value: string | Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value));
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
+function halfHourKey(date: Date) {
+  const hour = String(date.getHours()).padStart(2, '0');
+  return `${hour}:${date.getMinutes() < 30 ? '00' : '30'}`;
+}
 const weekDays = [
   { value: 0, label: 'Domingo' },
   { value: 1, label: 'Segunda-feira' },
@@ -145,29 +203,41 @@ export default function AppointmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const sessionPreferences = useMemo(loadAgendaPreferences, []);
+  const [clockNow, setClockNow] = useState(() => new Date());
+  const [currentDate, setCurrentDate] = useState(() => sessionPreferences.currentDate ? new Date(sessionPreferences.currentDate) : new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>(sessionPreferences.viewMode || 'week');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewAppt, setViewAppt] = useState<AppointmentRow | null>(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('09:00');
-  const [appointmentType, setAppointmentType] = useState<'session' | 'evaluation'>('session');
+  const [appointmentType, setAppointmentType] = useState<AppointmentType>('consultation');
   const [selectedPatient, setSelectedPatient] = useState('');
   const [selectedLead, setSelectedLead] = useState('');
   const [selectedTreatment, setSelectedTreatment] = useState('');
   const [selectedProfessional, setSelectedProfessional] = useState('');
-  const [filterProfessional, setFilterProfessional] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [queueExpanded, setQueueExpanded] = useState(true);
+  const [selectedLocationId, setSelectedLocationId] = useState(sessionPreferences.locationId || '');
+  const [filterProfessional, setFilterProfessional] = useState(sessionPreferences.professional || 'all');
+  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>(sessionPreferences.professionalIds || []);
+  const [filterStatus, setFilterStatus] = useState(sessionPreferences.status || 'all');
+  const [agendaSearch, setAgendaSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [createFormError, setCreateFormError] = useState('');
   const [duration, setDuration] = useState('60');
+  const [billingType, setBillingType] = useState<'private' | 'insurance'>('private');
+  const [selectedHealthInsurance, setSelectedHealthInsurance] = useState('');
   const [notes, setNotes] = useState('');
   const [quickPatientOpen, setQuickPatientOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
   const [blocksDialogOpen, setBlocksDialogOpen] = useState(false);
   const [waitlistDialogOpen, setWaitlistDialogOpen] = useState(false);
   const [availabilityProfessional, setAvailabilityProfessional] = useState('unassigned');
-  const [availabilityDraft, setAvailabilityDraft] = useState<Record<number, { isActive: boolean; start: string; end: string }>>({});
+  const [availabilityDraft, setAvailabilityDraft] = useState<WeeklyOperatingHours>(emptyWeeklyHours());
+  const [professionalExceptionDate, setProfessionalExceptionDate] = useState('');
+  const [professionalExceptionClosed, setProfessionalExceptionClosed] = useState(true);
+  const [professionalExceptionStart, setProfessionalExceptionStart] = useState('08:00');
+  const [professionalExceptionEnd, setProfessionalExceptionEnd] = useState('12:00');
+  const [professionalExceptionReason, setProfessionalExceptionReason] = useState('');
   const [blockProfessional, setBlockProfessional] = useState('all');
   const [blockStartDate, setBlockStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [blockStartTime, setBlockStartTime] = useState('09:00');
@@ -183,7 +253,6 @@ export default function AppointmentsPage() {
   const [rescheduleProfessional, setRescheduleProfessional] = useState('unassigned');
   const [rescheduleNotes, setRescheduleNotes] = useState('');
   const [reassignProfessional, setReassignProfessional] = useState('unassigned');
-  const [proposalLoadingId, setProposalLoadingId] = useState<string | null>(null);
   const [waitlistTargetType, setWaitlistTargetType] = useState<WaitlistTargetType>('lead');
   const [waitlistLeadId, setWaitlistLeadId] = useState('');
   const [waitlistPatientId, setWaitlistPatientId] = useState('');
@@ -209,6 +278,35 @@ export default function AppointmentsPage() {
 
   const isProfessional = role === 'professional';
 
+  const { data: locations = [] } = useQuery({
+    queryKey: ['clinic-locations', clinicId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('clinic_locations').select('*').eq('clinic_id', clinicId!).eq('active', true).order('is_primary', { ascending: false }).order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicId,
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (locations.length && !locations.some((location) => location.id === selectedLocationId)) {
+      setSelectedLocationId(locations.find(location => location.is_primary)?.id || locations[0].id);
+    }
+  }, [locations, selectedLocationId]);
+  useEffect(() => {
+    sessionStorage.setItem(agendaPreferenceKey, JSON.stringify({
+      viewMode,
+      currentDate: currentDate.toISOString(),
+      locationId: selectedLocationId,
+      professional: filterProfessional,
+      professionalIds: selectedDoctorIds,
+      status: filterStatus,
+    } satisfies AgendaSessionPreferences));
+  }, [viewMode, currentDate, selectedLocationId, filterProfessional, selectedDoctorIds, filterStatus]);
+
   // Get date range based on view
   const { rangeStart, rangeEnd, calendarDays } = useMemo(() => {
     if (viewMode === 'month') {
@@ -226,21 +324,63 @@ export default function AppointmentsPage() {
     }
   }, [currentDate, viewMode]);
 
-  const { data: appointments = [] } = useQuery({
-    queryKey: ['appointments', clinicId, rangeStart.toISOString(), rangeEnd.toISOString()],
+  const { data: appointments = [], isLoading: appointmentsLoading, isError: appointmentsError, refetch: refetchAppointments } = useQuery({
+    queryKey: ['appointments', clinicId, selectedLocationId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('appointments')
-        .select('*, patients(full_name, dissatisfaction_flag, dissatisfaction_level, dissatisfaction_reason), leads!appointments_lead_id_fkey(full_name, phone), treatments(name)')
+        .select('*, patients(full_name, phone, cpf, dissatisfaction_flag, dissatisfaction_level, dissatisfaction_reason), leads!appointments_lead_id_fkey(full_name, phone), treatments(name)')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .gte('scheduled_at', rangeStart.toISOString())
         .lte('scheduled_at', rangeEnd.toISOString())
         .order('scheduled_at');
       if (error) throw error;
       return (data || []) as AppointmentRow[];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
+  const { data: scheduleExceptions = [] } = useQuery({
+    queryKey: ['agenda-schedule-exceptions', clinicId, selectedLocationId, format(rangeStart, 'yyyy-MM-dd'), format(rangeEnd, 'yyyy-MM-dd')],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('scheduling_exceptions').select('*')
+        .eq('clinic_id', clinicId!).eq('location_id', selectedLocationId)
+        .gte('exception_date', format(rangeStart, 'yyyy-MM-dd')).lte('exception_date', format(rangeEnd, 'yyyy-MM-dd'));
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicId && !!selectedLocationId,
+  });
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId);
+  const locationHours = useMemo(() => {
+    const candidate = selectedLocation?.opening_hours as WeeklyOperatingHours | null | undefined;
+    return candidate && validateWeeklyOperatingHours(candidate).length === 0 ? candidate : null;
+  }, [selectedLocation]);
+  const locationScheduleExceptions = useMemo<ScheduleException[]>(() => scheduleExceptions
+    .filter((item) => !item.professional_id)
+    .map((item) => ({
+      date: item.exception_date, closed: item.is_closed,
+      periods: (item.periods as unknown as OperatingPeriod[] | null) || undefined,
+      kind: item.kind as ScheduleException['kind'], reason: item.reason || undefined,
+    })), [scheduleExceptions]);
+  const datesWithExistingEvents = useMemo(() => new Set(appointments.map((appointment) =>
+    isoDateInTimezone(appointment.start_time || appointment.scheduled_at, selectedLocation?.timezone || 'America/Sao_Paulo'),
+  )), [appointments, selectedLocation?.timezone]);
+  const visibleCalendarDays = useMemo(() => {
+    if (viewMode !== 'week' || !selectedLocation?.hide_closed_days || !locationHours) return calendarDays;
+    const visibleDates = new Set(workingHoursPolicy.getVisibleWeekDays(
+      calendarDays.map((day) => format(day, 'yyyy-MM-dd')), locationHours, locationScheduleExceptions, datesWithExistingEvents,
+    ));
+    return calendarDays.filter((day) => visibleDates.has(format(day, 'yyyy-MM-dd')));
+  }, [calendarDays, datesWithExistingEvents, locationHours, locationScheduleExceptions, selectedLocation?.hide_closed_days, viewMode]);
+  const halfHourSlots = useMemo(() => {
+    if (!selectedLocation?.limit_calendar_to_operating_hours || !locationHours) return defaultHalfHourSlots;
+    const periods = (viewMode === 'week' ? visibleCalendarDays : [currentDate]).flatMap((day) =>
+      workingHoursPolicy.getLocationOperatingPeriods(format(day, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions),
+    );
+    const range = workingHoursPolicy.getVisibleTimeRange(periods);
+    return range ? createHalfHourSlots(range.start, range.end) : [];
+  }, [currentDate, locationHours, locationScheduleExceptions, selectedLocation?.limit_calendar_to_operating_hours, viewMode, visibleCalendarDays]);
 
   const selectedPatientLookupId = selectedPatient || prefillPatientId || '';
   const { data: patients = [] } = useQuery({
@@ -248,7 +388,7 @@ export default function AppointmentsPage() {
     queryFn: async () => {
       let query = supabase
         .from('patients')
-        .select('id, full_name, current_anamnese_status, current_anamnese_expires_at')
+        .select('id, full_name')
         .eq('clinic_id', clinicId!)
         .order('full_name');
       query = selectedPatientLookupId
@@ -274,6 +414,30 @@ export default function AppointmentsPage() {
     enabled: !!clinicId,
   });
 
+  const { data: appointmentDurationSettings } = useQuery({
+    queryKey: ['agenda-appointment-durations', clinicId, selectedProfessional],
+    queryFn: async () => {
+      const [{ data: settings, error: settingsError }, { data: insuranceLinks, error: linksError }] = await Promise.all([
+        supabase.from('professional_settings').select('private_appointment_duration_minutes').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessional).maybeSingle(),
+        supabase.from('professional_health_insurances').select('health_insurance_id, appointment_duration_minutes, health_insurances(name)').eq('clinic_id', clinicId!).eq('professional_id', selectedProfessional).eq('status', 'active'),
+      ]);
+      if (settingsError) throw settingsError;
+      if (linksError) throw linksError;
+      return { privateDuration: settings?.private_appointment_duration_minutes || 60, insuranceLinks: insuranceLinks || [] };
+    },
+    enabled: !!clinicId && !!selectedProfessional && dialogOpen,
+  });
+
+  useEffect(() => {
+    if (!appointmentDurationSettings) return;
+    if (billingType === 'private') {
+      setDuration(String(appointmentDurationSettings.privateDuration));
+      return;
+    }
+    const link = appointmentDurationSettings.insuranceLinks.find(item => item.health_insurance_id === selectedHealthInsurance);
+    if (link) setDuration(String(link.appointment_duration_minutes));
+  }, [appointmentDurationSettings, billingType, selectedHealthInsurance]);
+
   const { data: treatments = [] } = useQuery({
     queryKey: ['treatments-select', clinicId],
     queryFn: async () => {
@@ -282,75 +446,73 @@ export default function AppointmentsPage() {
     },
     enabled: !!clinicId,
   });
-  const { data: contracts = [] } = useQuery({
-    queryKey: ['appointments-contracts', clinicId],
+  const { professionals: agendaProfessionals } = useAgendaProfessionals(clinicId, user?.id);
+  const { data: locationProfessionalIds = [] } = useQuery({
+    queryKey: ['agenda-location-professionals', clinicId, selectedLocationId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('id, patient_id, proposal_id, status')
-        .eq('clinic_id', clinicId!)
-        .neq('status', 'cancelled');
+      const { data, error } = await supabase.from('professional_locations').select('professional_id').eq('clinic_id', clinicId!).eq('location_id', selectedLocationId).eq('active', true);
       if (error) throw error;
-      return (data || []) as ContractLite[];
+      return (data || []).map(link => link.professional_id as string);
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
-  const { data: proposalItems = [] } = useQuery({
-    queryKey: ['appointments-proposal-items', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('proposal_items')
-        .select('proposal_id, treatment_id');
-      if (error) throw error;
-      return (data || []) as ProposalItemLite[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: sessionRecords = [] } = useQuery({
-    queryKey: ['appointments-session-records', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('session_records')
-        .select('patient_id, treatment_id')
-        .eq('clinic_id', clinicId!);
-      if (error) throw error;
-      return (data || []) as SessionRecordLite[];
-    },
-    enabled: !!clinicId,
-  });
+  const professionals = useMemo(
+    () => agendaProfessionals.filter(professional => locationProfessionalIds.includes(professional.id)).map((professional, index) => ({
+      ...professional,
+      color: professionalColors[index % professionalColors.length],
+    })),
+    [agendaProfessionals, locationProfessionalIds],
+  );
+  const currentProfessionalId = professionals.find(professional => professional.user_id === user?.id)?.id || null;
+  const professionalIdsKey = professionals.map((professional) => professional.id).join(',');
 
-  const { staff: professionals = [] } = useStaffDirectory(clinicId);
+  useEffect(() => {
+    if (professionals.length === 0) return;
+    if (isProfessional && currentProfessionalId) {
+      setSelectedDoctorIds([currentProfessionalId]);
+      setFilterProfessional(currentProfessionalId);
+      return;
+    }
+    setSelectedDoctorIds((current) => {
+      const next = current.length > 0
+        ? current.filter((id) => professionals.some((professional) => professional.id === id))
+        : professionals.map((professional) => professional.id);
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+    });
+  }, [isProfessional, professionalIdsKey, currentProfessionalId, professionals]);
 
   const { data: availability = [] } = useQuery({
-    queryKey: ['professional-availability', clinicId],
+    queryKey: ['professional-availability', clinicId, selectedLocationId],
     queryFn: async () => {
       const { data, error } = await supabase.from('professional_availability')
         .select('*')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .eq('is_active', true)
         .order('professional_id')
         .order('day_of_week');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
 
   const { data: appointmentBlocks = [] } = useQuery({
-    queryKey: ['appointment-blocks', clinicId, rangeStart.toISOString(), rangeEnd.toISOString()],
+    queryKey: ['appointment-blocks', clinicId, selectedLocationId, rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
       const from = startOfDay(addDays(rangeStart, -14)).toISOString();
       const to = endOfDay(addDays(rangeEnd, 30)).toISOString();
       const { data, error } = await supabase.from('appointment_blocks')
         .select('*')
         .eq('clinic_id', clinicId!)
+        .eq('location_id', selectedLocationId)
         .gte('start_at', from)
         .lte('end_at', to)
         .order('start_at');
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicId,
+    enabled: !!clinicId && !!selectedLocationId,
   });
   const { data: waitlistEntries = [] } = useQuery({
     queryKey: ['appointment-waitlist', clinicId],
@@ -396,48 +558,6 @@ export default function AppointmentsPage() {
     },
     enabled: !!clinicId,
   });
-  const { data: reminderQueue = [] } = useQuery({
-    queryKey: ['appointment-reminders', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('appointment_reminders')
-        .select('*')
-        .eq('clinic_id', clinicId!)
-        .order('created_at', { ascending: false })
-        .limit(120);
-      if (error) throw error;
-      return (data || []) as ReminderRow[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: whatsappLogs = [] } = useQuery({
-    queryKey: ['whatsapp-command-logs', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('whatsapp_command_logs')
-        .select('*')
-        .eq('clinic_id', clinicId!)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return (data || []) as WhatsAppCommandLogRow[];
-    },
-    enabled: !!clinicId,
-  });
-  const { data: agendaJobExecutions = [] } = useQuery({
-    queryKey: ['agenda-job-executions', clinicId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('agenda_job_executions')
-        .select('*')
-        .or(`clinic_id.is.null,clinic_id.eq.${clinicId}`)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return (data || []) as AgendaJobExecutionRow[];
-    },
-    enabled: !!clinicId,
-  });
 
   const getSelectedPatientData = (patientId: string) => patients.find((p) => p.id === patientId);
   const getSelectedLeadData = useCallback((leadId: string) => leads.find((lead) => lead.id === leadId), [leads]);
@@ -448,7 +568,7 @@ export default function AppointmentsPage() {
     return new Date(start.getTime() + (appointment.duration_minutes || 60) * 60000);
   };
   const getAppointmentDisplayName = (appointment) => {
-    return (appointment.patients as { full_name?: string | null } | null)?.full_name || (appointment.leads as { full_name?: string | null } | null)?.full_name || 'Lead sem paciente';
+    return (appointment.patients as { full_name?: string | null } | null)?.full_name || (appointment.leads as { full_name?: string | null } | null)?.full_name || 'Paciente sem cadastro';
   };
   const getBlocksForDay = useCallback((day: Date) => {
     const dayStart = startOfDay(day).getTime();
@@ -461,73 +581,8 @@ export default function AppointmentsPage() {
   }, [appointmentBlocks]);
   const getProfessionalLabel = (professionalId?: string | null) => {
     if (!professionalId) return 'Não atribuído';
-    return professionals.find((professional) => professional.user_id === professionalId)?.label || 'Profissional';
+    return professionals.find((professional) => professional.id === professionalId)?.label || 'Profissional';
   };
-  const hasAvailabilityWindow = (professionalId: string | null, startTime: Date, endTime: Date) => {
-    if (!professionalId) return true;
-    const dayOfWeek = startTime.getDay();
-    const slots = availability.filter((slot) => slot.professional_id === professionalId && slot.day_of_week === dayOfWeek && slot.is_active);
-    if (slots.length === 0) return false;
-
-    const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
-    const endMinutes = endTime.getHours() * 60 + endTime.getMinutes();
-    return slots.some((slot) => {
-      const [startHour, startMinute] = String(slot.start_time).slice(0, 5).split(':').map(Number);
-      const [endHour, endMinute] = String(slot.end_time).slice(0, 5).split(':').map(Number);
-      const slotStartMinutes = startHour * 60 + startMinute;
-      const slotEndMinutes = endHour * 60 + endMinute;
-      return startMinutes >= slotStartMinutes && endMinutes <= slotEndMinutes;
-    });
-  };
-  const assertNoSchedulingConflicts = async ({
-    professionalId,
-    startTime,
-    endTime,
-    ignoreAppointmentId,
-  }: {
-    professionalId: string | null;
-    startTime: Date;
-    endTime: Date;
-    ignoreAppointmentId?: string;
-  }) => {
-    if (!clinicId) return;
-
-    let appointmentsQuery = supabase.from('appointments')
-      .select('id, start_time, end_time, status, professional_id')
-      .eq('clinic_id', clinicId)
-      .lt('start_time', endTime.toISOString())
-      .gt('end_time', startTime.toISOString())
-      .not('status', 'in', '(cancelled,rescheduled)');
-
-    if (professionalId) {
-      appointmentsQuery = appointmentsQuery.eq('professional_id', professionalId);
-    }
-
-    const { data: conflictingAppointments, error: appointmentError } = await appointmentsQuery;
-    if (appointmentError) throw appointmentError;
-
-    const realConflict = (conflictingAppointments || []).some((appointment) => appointment.id !== ignoreAppointmentId);
-    if (realConflict) {
-      throw new Error('Já existe outro agendamento para esse horário.');
-    }
-
-    let blocksQuery = supabase.from('appointment_blocks')
-      .select('id, professional_id, start_at, end_at')
-      .eq('clinic_id', clinicId)
-      .lt('start_at', endTime.toISOString())
-      .gt('end_at', startTime.toISOString());
-
-    if (professionalId) {
-      blocksQuery = blocksQuery.or(`professional_id.is.null,professional_id.eq.${professionalId}`);
-    }
-
-    const { data: conflictingBlocks, error: blockError } = await blocksQuery;
-    if (blockError) throw blockError;
-    if ((conflictingBlocks || []).length > 0) {
-      throw new Error('Existe um bloqueio para esse horário.');
-    }
-  };
-
   const openExceptionModal = (mode: 'cancel' | 'no_show' | 'reschedule', appointment: Record<string, unknown> & { id: string; clinic_id: string; status: string; appointment_type?: string | null; lead_id?: string | null }) => {
     setExceptionReason('');
     setRescheduleDate(format(getAppointmentStartDate(appointment), 'yyyy-MM-dd'));
@@ -536,6 +591,7 @@ export default function AppointmentsPage() {
     setRescheduleProfessional(appointment.professional_id || 'unassigned');
     setRescheduleNotes(appointment.notes || '');
     setExceptionModal({ mode, appointment });
+    setViewAppt(null);
   };
 
   useEffect(() => {
@@ -554,7 +610,7 @@ export default function AppointmentsPage() {
       setSelectedLead(prefillLeadId);
       setSelectedPatient('');
     } else if (prefillPatientId) {
-      setAppointmentType('session');
+      setAppointmentType(prefillAppointmentType === 'return' ? 'return' : prefillAppointmentType === 'post_operative' ? 'post_operative' : 'consultation');
       setSelectedPatient(prefillPatientId);
       setSelectedLead('');
     } else {
@@ -588,34 +644,32 @@ export default function AppointmentsPage() {
 
     const lead = getSelectedLeadData(selectedLead);
     if (!lead?.assigned_to) {
-      if (!selectedProfessional && isProfessional && user?.id) {
-        setSelectedProfessional(user.id);
+      if (!selectedProfessional && isProfessional && currentProfessionalId) {
+        setSelectedProfessional(currentProfessionalId);
       }
       return;
     }
 
-    const hasProfessionalAssigned = professionals.some((professional) => professional.user_id === lead.assigned_to);
-    setSelectedProfessional(hasProfessionalAssigned ? lead.assigned_to : (isProfessional && user?.id ? user.id : ''));
-  }, [appointmentType, selectedLead, professionals, isProfessional, user, dialogOpen, selectedProfessional, getSelectedLeadData]);
+    const assignedProfessional = professionals.find((professional) => professional.user_id === lead.assigned_to);
+    setSelectedProfessional(assignedProfessional?.id || (isProfessional ? currentProfessionalId || '' : ''));
+  }, [appointmentType, selectedLead, professionals, isProfessional, currentProfessionalId, dialogOpen, selectedProfessional, getSelectedLeadData]);
 
   useEffect(() => {
     if (professionals.length > 0 && availabilityProfessional === 'unassigned') {
-      setAvailabilityProfessional(professionals[0].user_id);
+      setAvailabilityProfessional(professionals[0].id);
     }
   }, [professionals, availabilityProfessional]);
 
   useEffect(() => {
     if (!availabilityProfessional || availabilityProfessional === 'unassigned') return;
-    const nextDraft = weekDays.reduce((acc, day) => {
-      const slot = availability.find((item) => item.professional_id === availabilityProfessional && item.day_of_week === day.value && item.is_active);
-      acc[day.value] = {
-        isActive: !!slot,
-        start: slot ? String(slot.start_time).slice(0, 5) : '09:00',
-        end: slot ? String(slot.end_time).slice(0, 5) : '18:00',
-      };
-      return acc;
-    }, {} as Record<number, { isActive: boolean; start: string; end: string }>);
-    setAvailabilityDraft(nextDraft);
+    const weekdays = weekDays.reduce<WeeklyOperatingHours['weekdays']>((result, day) => {
+      result[String(day.value) as keyof WeeklyOperatingHours['weekdays']] = availability
+        .filter((item) => item.professional_id === availabilityProfessional && item.day_of_week === day.value && item.is_active)
+        .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)))
+        .map((item) => ({ start: String(item.start_time).slice(0, 5), end: String(item.end_time).slice(0, 5) }));
+      return result;
+    }, {});
+    setAvailabilityDraft({ schemaVersion: 1, weekdays });
   }, [availabilityProfessional, availability]);
 
   useEffect(() => {
@@ -628,91 +682,92 @@ export default function AppointmentsPage() {
 
   const getProfColor = (profId: string | null) => {
     if (!profId) return professionalColors[0];
-    const index = professionals.findIndex(p => p.user_id === profId);
+    const index = professionals.findIndex(p => p.id === profId);
     return professionalColors[(index >= 0 ? index : 0) % professionalColors.length];
   };
 
-  const sessionTreatmentSummaryMap = useMemo(() => {
-    const contractedByKey = new Map<string, number>();
-    const performedByKey = new Map<string, number>();
-    const treatmentMap = new Map(
-      treatments.map((t) => [t.id, { id: t.id, name: t.name, duration: Number(t.duration_minutes || 60), sessionsPerContractItem: 1 }])
-    );
-    const proposalIdsByPatient = new Map<string, Set<string>>();
-    contracts.forEach((contract) => {
-      if (!contract.patient_id || !contract.proposal_id) return;
-      if (!proposalIdsByPatient.has(contract.patient_id)) {
-        proposalIdsByPatient.set(contract.patient_id, new Set<string>());
-      }
-      proposalIdsByPatient.get(contract.patient_id)!.add(contract.proposal_id);
-    });
-    const patientByProposal = new Map<string, string>();
-    proposalIdsByPatient.forEach((proposalIds, patientId) => {
-      proposalIds.forEach((proposalId) => patientByProposal.set(proposalId, patientId));
-    });
-    proposalItems.forEach((item) => {
-      if (!item.treatment_id || !item.proposal_id) return;
-      const patientId = patientByProposal.get(item.proposal_id);
-      if (!patientId) return;
-      const key = `${patientId}:${item.treatment_id}`;
-      contractedByKey.set(key, (contractedByKey.get(key) || 0) + 1);
-    });
-    sessionRecords.forEach((session) => {
-      if (!session.patient_id || !session.treatment_id) return;
-      const key = `${session.patient_id}:${session.treatment_id}`;
-      performedByKey.set(key, (performedByKey.get(key) || 0) + 1);
-    });
-    return { contractedByKey, performedByKey, treatmentMap };
-  }, [contracts, proposalItems, sessionRecords, treatments]);
-
-  const sessionTreatmentOptions = useMemo(() => {
-    if (appointmentType !== 'session' || !selectedPatient) return [] as Array<{ id: string; name: string; duration: number; contracted: number; performed: number; balance: number }>;
-    const { contractedByKey, performedByKey, treatmentMap } = sessionTreatmentSummaryMap;
-    const rows = new Map<string, { id: string; name: string; duration: number; contracted: number; performed: number; balance: number }>();
-    contractedByKey.forEach((contracted, key) => {
-      const [patientId, treatmentId] = key.split(':');
-      if (patientId !== selectedPatient) return;
-      const treatment = treatmentMap.get(treatmentId);
-      if (!treatment) return;
-      const performed = performedByKey.get(key) || 0;
-      rows.set(treatmentId, {
-        id: treatmentId,
-        name: treatment.name,
-        duration: treatment.duration,
-        contracted,
-        performed,
-        balance: Math.max(contracted - performed, 0),
-      });
-    });
-    return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [appointmentType, selectedPatient, sessionTreatmentSummaryMap]);
-
-  const selectedSessionTreatmentSummary = useMemo(() => {
-    if (appointmentType !== 'session' || !selectedTreatment) return null;
-    return sessionTreatmentOptions.find((item) => item.id === selectedTreatment) || null;
-  }, [appointmentType, selectedTreatment, sessionTreatmentOptions]);
-
-  const hasSessionBalance = selectedSessionTreatmentSummary ? selectedSessionTreatmentSummary.balance > 0 : false;
-
-  useEffect(() => {
-    if (appointmentType !== 'session') return;
-    if (!selectedTreatment) return;
-    const valid = sessionTreatmentOptions.some((item) => item.id === selectedTreatment);
-    if (!valid) setSelectedTreatment('');
-  }, [appointmentType, selectedTreatment, sessionTreatmentOptions]);
-
   const filteredAppointments = useMemo(() => {
     let filtered = appointments;
-    if (filterProfessional === 'unassigned') {
+    if (viewMode === 'doctors-day') {
+      filtered = filtered.filter((appointment) => !!appointment.professional_id && selectedDoctorIds.includes(appointment.professional_id));
+    } else if (filterProfessional === 'unassigned') {
       filtered = filtered.filter((appointment) => !appointment.professional_id);
     } else if (filterProfessional !== 'all') {
       filtered = filtered.filter((a) => a.professional_id === filterProfessional);
     }
-    if (filterStatus !== 'all') {
+    if (filterStatus === 'all') {
+      // A remarcação preserva o registro anterior para auditoria, mas ele não
+      // representa mais um horário ocupado e não deve aparecer na agenda ativa.
+      filtered = filtered.filter((appointment) => appointment.status !== 'rescheduled');
+    } else {
       filtered = filtered.filter((a) => a.status === filterStatus);
     }
     return filtered;
-  }, [appointments, filterProfessional, filterStatus]);
+  }, [appointments, filterProfessional, filterStatus, selectedDoctorIds, viewMode]);
+
+  const searchResults = useMemo(() => {
+    const term = agendaSearch.trim().toLocaleLowerCase('pt-BR');
+    if (term.length < 2) return [];
+    return appointments.filter((appointment) => {
+      const patient = appointment.patients as { full_name?: string | null; phone?: string | null; cpf?: string | null } | null;
+      const lead = appointment.leads as { full_name?: string | null; phone?: string | null } | null;
+      const treatment = appointment.treatments as { name?: string | null } | null;
+      const professionalName = professionals.find((professional) => professional.id === appointment.professional_id)?.label;
+      return [patient?.full_name, patient?.phone, patient?.cpf, lead?.full_name, lead?.phone, treatment?.name,
+        professionalName, statusConfig[appointment.status]?.label]
+        .some((value) => String(value || '').toLocaleLowerCase('pt-BR').includes(term));
+    }).slice(0, 8);
+  }, [agendaSearch, appointments, professionals]);
+
+  const openNewAppointmentAt = (day: Date, time: string, professionalId?: string | null) => {
+    resetForm();
+    setSelectedDate(format(day, 'yyyy-MM-dd'));
+    setSelectedTime(time);
+    if (professionalId) setSelectedProfessional(professionalId);
+    else if (filterProfessional !== 'all' && filterProfessional !== 'unassigned') setSelectedProfessional(filterProfessional);
+    setDialogOpen(true);
+  };
+
+  const isWithinProfessionalAvailability = useCallback((
+    day: Date,
+    time: string,
+    professionalId: string | null,
+    durationMinutes = 30,
+  ) => {
+    if (!professionalId) return true;
+    const startMinutes = timeToMinutes(time);
+    const endMinutes = startMinutes + durationMinutes;
+    const recurringProfessionalPeriods = availability
+      .filter((slot) => slot.professional_id === professionalId && slot.day_of_week === day.getDay() && slot.is_active)
+      .map((slot) => ({ start: String(slot.start_time).slice(0, 5), end: String(slot.end_time).slice(0, 5) }));
+    const professionalExceptions = scheduleExceptions
+      .filter((item) => item.professional_id === professionalId)
+      .map((item) => ({
+        date: item.exception_date, closed: item.is_closed,
+        periods: (item.periods as unknown as OperatingPeriod[] | null) || undefined,
+        kind: item.kind as ScheduleException['kind'], reason: item.reason || undefined,
+      }));
+    const effectivePeriods = locationHours
+      ? workingHoursPolicy.getEffectiveWorkingPeriods({
+          date: format(day, 'yyyy-MM-dd'), locationHours,
+          professionalHours: { [String(day.getDay())]: recurringProfessionalPeriods },
+          locationExceptions: locationScheduleExceptions, professionalExceptions,
+        })
+      : recurringProfessionalPeriods;
+    return effectivePeriods.some((period) => timeToMinutes(period.start) <= startMinutes && timeToMinutes(period.end) >= endMinutes);
+  }, [availability, locationHours, locationScheduleExceptions, scheduleExceptions]);
+
+  const visibleProfessionalId = filterProfessional !== 'all' && filterProfessional !== 'unassigned'
+    ? filterProfessional
+    : null;
+
+  const selectSearchResult = (appointment: AppointmentRow) => {
+    setCurrentDate(getAppointmentStartDate(appointment));
+    setViewMode('day');
+    setViewAppt(appointment);
+    setAgendaSearch('');
+    setSearchOpen(false);
+  };
 
   const operationalSummary = useMemo(() => {
     const todayAppointments = filteredAppointments.filter((appointment) =>
@@ -725,6 +780,8 @@ export default function AppointmentsPage() {
     return {
       totalInView: filteredAppointments.length,
       today: todayAppointments.length,
+      confirmedToday: todayAppointments.filter((appointment) => appointment.status === 'confirmed').length,
+      awaitingToday: todayAppointments.filter((appointment) => appointment.status === 'scheduled').length,
       readyForSession: readyForSession.length,
       noShow: filteredAppointments.filter((appointment) => appointment.status === 'no_show').length,
       unassigned: filteredAppointments.filter((appointment) => !appointment.professional_id).length,
@@ -738,86 +795,42 @@ export default function AppointmentsPage() {
       .slice(0, 5);
   }, [filteredAppointments]);
 
-  const agendaSignals = useMemo(() => {
-    const evaluations = filteredAppointments.filter((appointment) => appointment.appointment_type === 'evaluation').length;
-    const batches = filteredAppointments.filter((appointment) => appointment.is_batch).length;
-    const blockedDays = calendarDays.filter((day) => {
-      const dayStart = startOfDay(day).getTime();
-      const dayEnd = endOfDay(day).getTime();
-      return appointmentBlocks.some((block) => {
-        const blockStart = new Date(block.start_at).getTime();
-        const blockEnd = new Date(block.end_at).getTime();
-        return blockStart <= dayEnd && blockEnd >= dayStart;
-      });
-    }).length;
-
-    return {
-      evaluations,
-      batches,
-      blockedDays,
-      blocks: appointmentBlocks.length,
-    };
-  }, [filteredAppointments, appointmentBlocks, calendarDays]);
-  const whatsappOpsSummary = useMemo(() => {
-    const pending = reminderQueue.filter((item) => item.status === 'pending').length;
-    const sent = reminderQueue.filter((item) => item.status === 'sent').length;
-    const failed = reminderQueue.filter((item) => item.status === 'failed').length;
-    const inboundApplied = whatsappLogs.filter((log) => log.result_status === 'applied').length;
-    const jobSuccess = agendaJobExecutions.filter((job) => job.status === 'completed').length;
-    return {
-      pending,
-      sent,
-      failed,
-      inboundApplied,
-      jobSuccess,
-    };
-  }, [reminderQueue, whatsappLogs, agendaJobExecutions]);
-
   const createMutation = useMutation({
     mutationFn: async () => {
       setCreateFormError('');
       const startTime = new Date(`${selectedDate}T${selectedTime}:00`);
-      const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
-      const profId = selectedProfessional || (isProfessional ? user?.id || null : null);
+      const profId = selectedProfessional || (isProfessional ? currentProfessionalId : null);
       if (!profId) {
         throw new Error('Selecione um profissional para este agendamento.');
       }
-      if (profId && !hasAvailabilityWindow(profId, startTime, endTime)) {
-        throw new Error('Esse horário está fora da disponibilidade semanal do profissional.');
+      if (!isWithinProfessionalAvailability(startTime, selectedTime, profId, parseInt(duration) || 30)) {
+        throw new Error('Horário fora da disponibilidade do profissional. Escolha um dos horários disponíveis na grade.');
       }
-      await assertNoSchedulingConflicts({ professionalId: profId, startTime, endTime });
-      const lead = appointmentType === 'evaluation' ? getSelectedLeadData(selectedLead) : null;
-      if (appointmentType === 'session') {
-        if (!selectedTreatment) throw new Error('Selecione um tratamento.');
-        const isAllowed = sessionTreatmentOptions.some((item) => item.id === selectedTreatment);
-        if (!isAllowed) {
-          throw new Error('Selecione um tratamento contratado para o paciente.');
-        }
-        const chosen = sessionTreatmentOptions.find((item) => item.id === selectedTreatment);
-        if (!chosen || chosen.balance <= 0) {
-          throw new Error('Este tratamento já foi finalizado (saldo 0).');
-        }
+      if (billingType === 'insurance') {
+        if (!selectedHealthInsurance) throw new Error('Selecione o convênio da consulta.');
+        const professionalAcceptsInsurance = appointmentDurationSettings?.insuranceLinks.some(link => link.health_insurance_id === selectedHealthInsurance);
+        if (!professionalAcceptsInsurance) throw new Error('O convênio selecionado não está ativo para este profissional.');
       }
-      const payload: Record<string, unknown> = {
-        clinic_id: clinicId!,
-        patient_id: appointmentType === 'session' ? selectedPatient : null,
-        lead_id: appointmentType === 'evaluation' ? selectedLead : null,
-        treatment_id: selectedTreatment || null,
-        professional_id: profId,
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        scheduled_at: startTime.toISOString(),
-        duration_minutes: parseInt(duration) || 60,
-        appointment_type: appointmentType,
-        credit_check_required: appointmentType === 'evaluation' ? !!lead?.cpf : false,
-        credit_check_status: appointmentType === 'evaluation' && lead?.cpf ? 'pending' : 'not_required',
-        notes: notes || null,
-      };
-      const { data: insertedAppointment, error } = await supabase.from('appointments')
-        .insert(payload)
-        .select('id, start_time, professional_id')
-        .single();
+      if (appointmentType !== 'evaluation' && !selectedPatient) throw new Error('Selecione um paciente.');
+      const { data: insertedAppointment, error } = await callAgendaRpc<{ id: string; start_time: string; professional_id: string }>('create_appointment_secure', {
+        p_clinic_id: clinicId!,
+        p_location_id: selectedLocationId,
+        p_professional_id: profId,
+        p_patient_id: appointmentType === 'evaluation' ? null : selectedPatient,
+        p_lead_id: appointmentType === 'evaluation' ? selectedLead : null,
+        p_treatment_id: selectedTreatment || null,
+        p_start_time: startTime.toISOString(),
+        p_appointment_type: appointmentType,
+        p_notes: notes || null,
+        // O banco resolve a duração pela modalidade configurada para o profissional.
+        p_duration_minutes: null,
+        p_contract_id: null,
+        p_contract_item_id: null,
+        p_billing_type: billingType,
+        p_health_insurance_id: billingType === 'insurance' ? selectedHealthInsurance : null,
+      });
       if (error) throw error;
+      if (!insertedAppointment) throw new Error('O banco não retornou o agendamento criado.');
 
       if (appointmentType === 'evaluation' && selectedLead) {
         const { error: leadError } = await supabase.from('leads')
@@ -848,12 +861,12 @@ export default function AppointmentsPage() {
       setCreateFormError('');
       toast({ title: 'Agendamento criado!' });
     },
-    onError: (err: Error) => {
-      const msg = err.message || 'Erro ao criar agendamento.';
+    onError: (err: unknown) => {
+      const msg = getAgendaErrorMessage(err) || 'Erro ao criar agendamento.';
       if (
-        msg.includes('Já existe outro agendamento para esse horário.') ||
-        msg.includes('Existe um bloqueio para esse horário.') ||
-        msg.includes('fora da disponibilidade semanal do profissional')
+        msg.toLocaleLowerCase('pt-BR').includes('horário') ||
+        msg.toLocaleLowerCase('pt-BR').includes('bloqueio') ||
+        msg.toLocaleLowerCase('pt-BR').includes('disponibilidade')
       ) {
         setCreateFormError(msg);
         return;
@@ -865,18 +878,21 @@ export default function AppointmentsPage() {
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const appointment = appointments.find((item) => item.id === id);
-      const patch: Record<string, unknown> = { status };
-
-      if (status === 'confirmed') patch.confirmed_at = new Date().toISOString();
-      if (status === 'in_progress') patch.checked_in_at = new Date().toISOString();
-      if (status === 'completed') patch.completed_at = new Date().toISOString();
-
-      const { error } = await supabase.from('appointments').update(patch).eq('id', id);
+      const { error } = status === 'confirmed'
+        ? await callAgendaRpc<AppointmentRow>('confirm_appointment_secure', {
+            p_clinic_id: clinicId!,
+            p_appointment_id: id,
+          })
+        : await callAgendaRpc<AppointmentRow>('transition_appointment_status_secure', {
+            p_clinic_id: clinicId!,
+            p_appointment_id: id,
+            p_status: status,
+          });
       if (error) throw error;
 
       if (appointment?.lead_id && status === 'completed') {
         const { error: leadError } = await supabase.from('leads')
-          .update({ kanban_stage: 'proposal_sent' })
+          .update({ kanban_stage: 'closed_won' })
           .eq('clinic_id', clinicId!)
           .eq('id', appointment.lead_id);
         if (leadError) throw leadError;
@@ -902,17 +918,12 @@ export default function AppointmentsPage() {
           throw new Error('Informe o motivo para continuar.');
         }
 
-        const patch: Record<string, unknown> = {
-          status: exceptionModal.mode === 'cancel' ? 'cancelled' : 'no_show',
-        };
-
-        if (exceptionModal.mode === 'cancel') patch.cancelled_reason = exceptionReason.trim();
-        if (exceptionModal.mode === 'no_show') patch.no_show_reason = exceptionReason.trim();
-
-        const { error } = await supabase.from('appointments')
-          .update(patch)
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.id);
+        const { error } = await callAgendaRpc<AppointmentRow>('cancel_appointment_secure', {
+          p_clinic_id: clinicId,
+          p_appointment_id: appointment.id,
+          p_reason: exceptionReason.trim(),
+          p_status: exceptionModal.mode === 'cancel' ? 'cancelled' : 'no_show',
+        });
         if (error) throw error;
 
         if (appointment.lead_id && appointment.appointment_type === 'evaluation') {
@@ -931,52 +942,24 @@ export default function AppointmentsPage() {
       }
 
       const startTime = new Date(`${rescheduleDate}T${rescheduleTime}:00`);
-      const durationMinutes = parseInt(rescheduleDuration) || 60;
-      const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
       const nextProfessionalId = rescheduleProfessional === 'unassigned' ? null : rescheduleProfessional;
-      if (nextProfessionalId && !hasAvailabilityWindow(nextProfessionalId, startTime, endTime)) {
-        throw new Error('Esse novo horário está fora da disponibilidade semanal do profissional.');
-      }
-      await assertNoSchedulingConflicts({
-        professionalId: nextProfessionalId,
-        startTime,
-        endTime,
-        ignoreAppointmentId: appointment.id,
-      });
+      const effectiveProfessionalId = nextProfessionalId || appointment.professional_id;
+      if (!effectiveProfessionalId) throw new Error('Selecione um profissional para remarcar.');
+
       const mergedNotes = [appointment.notes, rescheduleNotes].filter(Boolean).join('\n\n');
-
-      const { data: newAppointment, error: createError } = await supabase.from('appointments')
-        .insert({
-          clinic_id: clinicId,
-          patient_id: appointment.patient_id,
-          lead_id: appointment.lead_id,
-          treatment_id: appointment.treatment_id,
-          professional_id: nextProfessionalId,
-          appointment_type: appointment.appointment_type,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          scheduled_at: startTime.toISOString(),
-          duration_minutes: durationMinutes,
-          notes: mergedNotes || null,
-          status: 'scheduled',
-          credit_check_required: appointment.credit_check_required || false,
-          credit_check_status: appointment.credit_check_status || 'not_required',
-          rescheduled_from: appointment.id,
-          created_by: user?.id || null,
-        })
-        .select('id')
-        .single();
+      const { data: newAppointment, error: createError } = await callAgendaRpc<{ id: string }>('reschedule_appointment_secure', {
+        p_clinic_id: clinicId,
+        p_appointment_id: appointment.id,
+        p_start_time: startTime.toISOString(),
+        p_professional_id: nextProfessionalId,
+        p_location_id: appointment.location_id || selectedLocationId,
+        p_notes: mergedNotes || null,
+        // O PostgreSQL recalcula pela modalidade, convênio, serviço e profissional vigentes.
+        p_duration_minutes: null,
+        p_reason: exceptionReason.trim() || 'Remarcado',
+      });
       if (createError) throw createError;
-
-      const { error: updateError } = await supabase.from('appointments')
-        .update({
-          status: 'rescheduled',
-          rescheduled_to: newAppointment.id,
-          cancelled_reason: exceptionReason.trim() || 'Remarcado',
-        })
-        .eq('clinic_id', clinicId)
-        .eq('id', appointment.id);
-      if (updateError) throw updateError;
+      if (!newAppointment) throw new Error('O banco não retornou o novo agendamento.');
 
       if (appointment.lead_id && appointment.appointment_type === 'evaluation') {
         const { error: leadError } = await supabase.from('leads')
@@ -993,7 +976,7 @@ export default function AppointmentsPage() {
       setExceptionModal(null);
       toast({ title: 'Agenda atualizada' });
     },
-    onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Erro', description: getAgendaErrorMessage(err), variant: 'destructive' }),
   });
 
   const reassignProfessionalMutation = useMutation({
@@ -1002,25 +985,12 @@ export default function AppointmentsPage() {
       const nextProfessionalId = reassignProfessional === 'unassigned' ? null : reassignProfessional;
       if ((viewAppt.professional_id || null) === nextProfessionalId) return;
 
-      const start = getAppointmentStartDate(viewAppt);
-      const end = getAppointmentEndDate(viewAppt);
-
-      if (nextProfessionalId && !hasAvailabilityWindow(nextProfessionalId, start, end)) {
-        throw new Error('O profissional selecionado não possui disponibilidade neste horário.');
-      }
-
-      await assertNoSchedulingConflicts({
-        professionalId: nextProfessionalId,
-        startTime: start,
-        endTime: end,
-        ignoreAppointmentId: viewAppt.id,
+      if (!nextProfessionalId) throw new Error('Selecione um profissional para o agendamento.');
+      const { error } = await callAgendaRpc<AppointmentRow>('reassign_appointment_professional_secure', {
+        p_clinic_id: clinicId,
+        p_appointment_id: viewAppt.id,
+        p_professional_id: nextProfessionalId,
       });
-
-      const { error } = await supabase
-        .from('appointments')
-        .update({ professional_id: nextProfessionalId })
-        .eq('id', viewAppt.id)
-        .eq('clinic_id', clinicId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1030,7 +1000,7 @@ export default function AppointmentsPage() {
       qc.invalidateQueries({ queryKey: ['appointments'] });
       toast({ title: 'Profissional reatribuído!' });
     },
-    onError: (error) => toast({ title: 'Não foi possível reatribuir', description: error.message, variant: 'destructive' }),
+    onError: (error) => toast({ title: 'Não foi possível reatribuir', description: getAgendaErrorMessage(error), variant: 'destructive' }),
   });
 
   const saveAvailabilityMutation = useMutation({
@@ -1038,24 +1008,27 @@ export default function AppointmentsPage() {
       if (!clinicId || !availabilityProfessional || availabilityProfessional === 'unassigned') {
         throw new Error('Selecione um profissional.');
       }
+      const validationErrors = validateWeeklyOperatingHours(availabilityDraft);
+      if (validationErrors.length > 0) throw new Error(validationErrors[0]);
 
       const { error: deleteError } = await supabase.from('professional_availability')
         .delete()
         .eq('clinic_id', clinicId)
+        .eq('location_id', selectedLocationId)
         .eq('professional_id', availabilityProfessional);
       if (deleteError) throw deleteError;
 
-      const rows = weekDays
-        .map((day) => ({ day, config: availabilityDraft[day.value] }))
-        .filter(({ config }) => config?.isActive)
-        .map(({ day, config }) => ({
+      const rows = weekDays.flatMap((day) =>
+        (availabilityDraft.weekdays[String(day.value) as keyof WeeklyOperatingHours['weekdays']] || []).map((period) => ({
           clinic_id: clinicId,
+          location_id: selectedLocationId,
           professional_id: availabilityProfessional,
           day_of_week: day.value,
-          start_time: config.start,
-          end_time: config.end,
+          start_time: period.start,
+          end_time: period.end,
           is_active: true,
-        }));
+        })),
+      );
 
       if (rows.length > 0) {
         const { error: insertError } = await supabase.from('professional_availability').insert(rows);
@@ -1068,6 +1041,35 @@ export default function AppointmentsPage() {
       toast({ title: 'Disponibilidade atualizada' });
     },
     onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+  });
+
+  const saveProfessionalExceptionMutation = useMutation({
+    mutationFn: async () => {
+      if (!clinicId || !selectedLocationId || !availabilityProfessional || availabilityProfessional === 'unassigned' || !professionalExceptionDate) {
+        throw new Error('Selecione profissional e data.');
+      }
+      if (!professionalExceptionClosed && timeToMinutes(professionalExceptionEnd) <= timeToMinutes(professionalExceptionStart)) {
+        throw new Error('O fim do horário especial precisa ser posterior ao início.');
+      }
+      const query = supabase.from('scheduling_exceptions');
+      const { error: deleteError } = await query.delete().eq('clinic_id', clinicId).eq('location_id', selectedLocationId)
+        .eq('professional_id', availabilityProfessional).eq('exception_date', professionalExceptionDate);
+      if (deleteError) throw deleteError;
+      const { error } = await query.insert({
+        clinic_id: clinicId, location_id: selectedLocationId, professional_id: availabilityProfessional,
+        exception_date: professionalExceptionDate, is_closed: professionalExceptionClosed,
+        periods: professionalExceptionClosed ? null : [{ start: professionalExceptionStart, end: professionalExceptionEnd }],
+        kind: professionalExceptionClosed ? 'day_off' : 'special_hours', reason: professionalExceptionReason.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agenda-schedule-exceptions'] });
+      setProfessionalExceptionDate('');
+      setProfessionalExceptionReason('');
+      toast({ title: 'Exceção do profissional salva' });
+    },
+    onError: (error: Error) => toast({ title: 'Erro', description: error.message, variant: 'destructive' }),
   });
 
   const createBlockMutation = useMutation({
@@ -1084,6 +1086,7 @@ export default function AppointmentsPage() {
 
       const { error } = await supabase.from('appointment_blocks').insert({
         clinic_id: clinicId,
+        location_id: selectedLocationId,
         professional_id: blockProfessional === 'all' ? null : blockProfessional,
         start_at: startAt.toISOString(),
         end_at: endAt.toISOString(),
@@ -1212,31 +1215,26 @@ export default function AppointmentsPage() {
       if (!clinicId || !waitlist) throw new Error('Dados da lista de espera inválidos.');
 
       const startTime = notification.matched_slot_start;
-      const endTime = notification.matched_slot_end;
       const professionalId = notification.matched_professional_id;
       if (!professionalId) throw new Error('Profissional da vaga não identificado.');
 
-      const appointmentPayload: Record<string, unknown> = {
-        clinic_id: clinicId,
-        patient_id: waitlist.patient_id,
-        lead_id: waitlist.lead_id,
-        treatment_id: waitlist.treatment_id,
-        professional_id: professionalId,
-        start_time: startTime,
-        end_time: endTime,
-        scheduled_at: startTime,
-        duration_minutes: waitlist.min_duration_minutes,
-        appointment_type: waitlist.lead_id ? 'evaluation' : 'session',
-        status: 'scheduled',
-        notes: waitlist.notes || null,
-      };
-
-      const { data: appointment, error: appointmentError } = await supabase
-        .from('appointments')
-        .insert(appointmentPayload)
-        .select('id')
-        .single();
+      const { data: appointment, error: appointmentError } = await callAgendaRpc<{ id: string }>('create_appointment_secure', {
+        p_clinic_id: clinicId,
+        p_location_id: selectedLocationId,
+        p_professional_id: professionalId,
+        p_patient_id: waitlist.patient_id,
+        p_lead_id: waitlist.lead_id,
+        p_treatment_id: waitlist.treatment_id,
+        p_start_time: startTime,
+        p_appointment_type: waitlist.lead_id ? 'evaluation' : 'consultation',
+        p_notes: waitlist.notes || null,
+        // A duração ofertada e criada tem a mesma autoridade canônica no PostgreSQL.
+        p_duration_minutes: null,
+        p_contract_id: null,
+        p_contract_item_id: null,
+      });
       if (appointmentError) throw appointmentError;
+      if (!appointment) throw new Error('O banco não retornou o agendamento criado.');
 
       const { error: notifError } = await supabase
         .from('waitlist_notifications')
@@ -1276,7 +1274,7 @@ export default function AppointmentsPage() {
       qc.invalidateQueries({ queryKey: ['crm-leads'] });
       toast({ title: 'Agendamento criado a partir da lista de espera' });
     },
-    onError: (err: Error) => toast({ title: 'Erro ao criar agendamento', description: err.message, variant: 'destructive' }),
+    onError: (err: Error) => toast({ title: 'Erro ao criar agendamento', description: getAgendaErrorMessage(err), variant: 'destructive' }),
   });
 
   const createWaitlistMutation = useMutation({
@@ -1285,7 +1283,7 @@ export default function AppointmentsPage() {
         throw new Error('Lista de espera indisponível: rode as migrations de Agenda Avançada nesta base.');
       }
       if (!clinicId) throw new Error('Clínica não identificada.');
-      if (waitlistTargetType === 'lead' && !waitlistLeadId) throw new Error('Selecione um lead.');
+      if (waitlistTargetType === 'lead' && !waitlistLeadId) throw new Error('Selecione um paciente em avaliação.');
       if (waitlistTargetType === 'patient' && !waitlistPatientId) throw new Error('Selecione um paciente.');
       if (!waitlistWindowStart || !waitlistWindowEnd) throw new Error('Informe a janela de busca.');
       if (waitlistWindowEnd < waitlistWindowStart) throw new Error('A data final deve ser maior ou igual à data inicial.');
@@ -1318,7 +1316,7 @@ export default function AppointmentsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['appointment-waitlist'] });
-      toast({ title: 'Lead/paciente adicionado à lista de espera' });
+      toast({ title: 'Paciente adicionado à lista de espera' });
       resetWaitlistForm();
     },
     onError: (err: Error) => {
@@ -1332,12 +1330,14 @@ export default function AppointmentsPage() {
   });
 
   const resetForm = () => {
-    setAppointmentType('session');
+    setAppointmentType('consultation');
     setSelectedPatient('');
     setSelectedLead('');
     setSelectedTreatment('');
     setSelectedProfessional('');
     setDuration('60');
+    setBillingType('private');
+    setSelectedHealthInsurance('');
     setNotes('');
     setCreateFormError('');
   };
@@ -1360,82 +1360,6 @@ export default function AppointmentsPage() {
     setWaitlistNotes('');
   };
 
-  const ensurePatientForLead = async (leadId: string) => {
-    const { data: lead, error: leadError } = await supabase.from('leads')
-      .select('*')
-      .eq('clinic_id', clinicId!)
-      .eq('id', leadId)
-      .single();
-    if (leadError) throw leadError;
-
-    if (lead.patient_id) return lead.patient_id as string;
-
-    const { data: patient, error: patientError } = await supabase
-      .from('patients')
-      .insert({
-        clinic_id: clinicId!,
-        full_name: lead.full_name,
-        phone: lead.phone,
-        cpf: lead.cpf,
-        email: lead.email,
-        date_of_birth: lead.birth_date,
-        notes: lead.notes,
-        status: 'active',
-      })
-      .select('id')
-      .single();
-    if (patientError) throw patientError;
-
-    const { error: updateLeadError } = await supabase.from('leads')
-      .update({
-        patient_id: patient.id,
-        converted_at: new Date().toISOString(),
-      })
-      .eq('clinic_id', clinicId!)
-      .eq('id', leadId);
-    if (updateLeadError) throw updateLeadError;
-
-    qc.invalidateQueries({ queryKey: ['crm-leads'] });
-    qc.invalidateQueries({ queryKey: ['patients'] });
-    qc.invalidateQueries({ queryKey: ['patients-select'] });
-
-    return patient.id as string;
-  };
-
-  const openProposalFromEvaluation = async (appointment: AppointmentRow, finalizeFirst = false) => {
-    if (!clinicId || !appointment?.lead_id) return;
-
-    setProposalLoadingId(appointment.id);
-    try {
-      if (finalizeFirst) {
-        const { error: appointmentError } = await supabase.from('appointments')
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-          })
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.id);
-        if (appointmentError) throw appointmentError;
-
-        const { error: leadError } = await supabase.from('leads')
-          .update({ kanban_stage: 'proposal_sent' })
-          .eq('clinic_id', clinicId)
-          .eq('id', appointment.lead_id);
-        if (leadError) throw leadError;
-      }
-
-      const patientId = await ensurePatientForLead(appointment.lead_id);
-      qc.invalidateQueries({ queryKey: ['appointments'] });
-      qc.invalidateQueries({ queryKey: ['crm-leads'] });
-      setViewAppt(null);
-      navigate(`/clinic/proposals?patientId=${patientId}&leadId=${appointment.lead_id}&openNew=1`);
-    } catch (err) {
-      toast({ title: 'Erro', description: err.message || 'Não foi possível abrir a proposta.', variant: 'destructive' });
-    } finally {
-      setProposalLoadingId(null);
-    }
-  };
-
   const navigate_ = (dir: number) => {
     if (viewMode === 'month') setCurrentDate(dir > 0 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
     else if (viewMode === 'week') setCurrentDate(dir > 0 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
@@ -1443,175 +1367,180 @@ export default function AppointmentsPage() {
   };
 
   const getApptsForDay = (day: Date) => filteredAppointments.filter((a) => isSameDay(getAppointmentStartDate(a), day));
+  const selectedDoctors = professionals.filter((professional) => selectedDoctorIds.includes(professional.id));
+  const filterProfessionalLabel = filterProfessional === 'all'
+    ? 'Todos os médicos'
+    : filterProfessional === 'unassigned'
+      ? 'Não atribuído'
+      : professionals.find((professional) => professional.id === filterProfessional)?.label || 'Selecionar médico';
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   const headerLabel = viewMode === 'month'
-    ? format(currentDate, 'MMMM yyyy', { locale: ptBR })
+    ? format(currentDate, 'MMM yyyy', { locale: ptBR })
     : viewMode === 'week'
-    ? `${format(rangeStart, 'dd/MM', { locale: ptBR })} - ${format(rangeEnd, 'dd/MM/yyyy', { locale: ptBR })}`
-    : format(currentDate, "EEEE, dd 'de' MMMM", { locale: ptBR });
+    ? `${format(rangeStart, 'd', { locale: ptBR })}–${format(rangeEnd, 'd MMM', { locale: ptBR })}`
+    : format(currentDate, 'd MMM', { locale: ptBR });
+  const now = clockNow;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const agendaStartMinutes = 8 * 60;
+  const agendaEndMinutes = agendaStartMinutes + halfHourSlots.length * 30;
+  const showCurrentTime = currentMinutes >= agendaStartMinutes && currentMinutes < agendaEndMinutes;
+  const currentTimeSlotIndex = Math.floor((currentMinutes - agendaStartMinutes) / 30);
+  const currentTimeOffset = ((currentMinutes % 30) / 30) * 48;
+  const currentTimeDayOffset = ((currentMinutes % 30) / 30) * 58;
+  const currentDateOperatingPeriods = locationHours
+    ? workingHoursPolicy.getLocationOperatingPeriods(format(currentDate, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions)
+    : [];
+  const isCurrentDateClosed = !!locationHours && currentDateOperatingPeriods.length === 0;
 
   return (
     <div>
-      <PageHeader title="Agenda" description="Gerencie os agendamentos da clínica">
-        <div className="flex flex-wrap gap-2">
-          <>
-            <BrandButton variant="outline" onClick={() => setAvailabilityDialogOpen(true)}>
-              <CalendarCog className="w-4 h-4" /> Disponibilidade
-            </BrandButton>
-            <BrandButton variant="outline" onClick={() => setBlocksDialogOpen(true)}>
-              <Lock className="w-4 h-4" /> Bloqueios
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => {
-                resetWaitlistForm();
-                setWaitlistDialogOpen(true);
-              }}
-            >
-              <BellRing className="w-4 h-4" /> Lista de Espera
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => sendReminderQueueMutation.mutate()}
-              disabled={sendReminderQueueMutation.isPending}
-            >
-              {sendReminderQueueMutation.isPending ? 'Processando...' : 'Fila Lembretes WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => dispatchReminderMutation.mutate()}
-              disabled={dispatchReminderMutation.isPending}
-            >
-              {dispatchReminderMutation.isPending ? 'Enviando...' : 'Disparar Lembretes WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => generateDailySummaryMutation.mutate()}
-              disabled={generateDailySummaryMutation.isPending}
-            >
-              {generateDailySummaryMutation.isPending ? 'Gerando...' : 'Resumo Diário WA'}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              onClick={() => runAgendaJobsMutation.mutate('manual')}
-              disabled={runAgendaJobsMutation.isPending}
-            >
-              {runAgendaJobsMutation.isPending ? 'Executando...' : 'Rodar Jobs Agenda'}
-            </BrandButton>
-          </>
-          <BrandButton onClick={() => {
+      <PageHeader title="Agenda" description="Gerencie agendamentos, disponibilidade e atendimentos da clínica.">
+        <BrandButton className="h-10 shadow-sm" onClick={() => {
             resetForm();
             setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
-            if (isProfessional && user?.id) {
-              setSelectedProfessional(user.id);
+            if (isProfessional && currentProfessionalId) {
+              setSelectedProfessional(currentProfessionalId || '');
             }
             setDialogOpen(true);
           }}>
-            <Plus className="w-4 h-4" /> Novo Agendamento
-          </BrandButton>
-        </div>
+          <Plus className="h-4 w-4" /> Novo agendamento
+        </BrandButton>
       </PageHeader>
 
-      <div className="grid gap-3 md:grid-cols-5 mb-6">
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <CalendarCheck2 className="w-5 h-5 text-primary mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.totalInView}</p>
-            <p className="text-xs text-muted-foreground">Agendamentos no período</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <Clock3 className="w-5 h-5 text-primary mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.today}</p>
-            <p className="text-xs text-muted-foreground">Atendimentos de hoje</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <CheckCircle2 className="w-5 h-5 text-success mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.readyForSession}</p>
-            <p className="text-xs text-muted-foreground">Prontos para sessão</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in">
-          <CardContent className="p-4">
-            <AlertTriangle className="w-5 h-5 text-warning mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.noShow}</p>
-            <p className="text-xs text-muted-foreground">Não compareceu</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card animate-fade-in border-warning/30 cursor-pointer" onClick={() => setFilterProfessional('unassigned')}>
-          <CardContent className="p-4">
-            <AlertTriangle className="w-5 h-5 text-warning mb-2" />
-            <p className="text-2xl font-bold text-foreground">{operationalSummary.unassigned}</p>
-            <p className="text-xs text-muted-foreground">Não atribuído</p>
-          </CardContent>
-        </Card>
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
+        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+          <SelectTrigger className="h-10 w-[220px] border-0 bg-secondary/60 shadow-none" aria-label="Selecionar unidade"><MapPin className="mr-2 h-4 w-4"/><SelectValue placeholder="Selecionar unidade" /></SelectTrigger>
+          <SelectContent>{locations.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setAvailabilityDialogOpen(true)}>
+          <CalendarCog className="h-4 w-4" /> Disponibilidade
+        </BrandButton>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => setBlocksDialogOpen(true)}>
+          <Lock className="h-4 w-4" /> Bloqueios{appointmentBlocks.length > 0 ? ` (${appointmentBlocks.length})` : ''}
+        </BrandButton>
+        <BrandButton className="h-10" size="sm" variant="ghost" onClick={() => { resetWaitlistForm(); setWaitlistDialogOpen(true); }}>
+          <BellRing className="h-4 w-4" /> Lista de espera{waitlistEntries.length > 0 ? ` · ${waitlistEntries.length}` : ''}
+        </BrandButton>
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <BrandButton className="h-10" size="sm" variant="ghost" aria-label="Abrir automações da agenda">
+                <MoreHorizontal className="h-4 w-4" /> Automações
+              </BrandButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Operações administrativas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => sendReminderQueueMutation.mutate()}>Lembretes de consultas</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => dispatchReminderMutation.mutate()}>Confirmações via WhatsApp</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => generateDailySummaryMutation.mutate()}>Resumo diário</button>
+              <button className="w-full rounded-sm px-2 py-2 text-left text-sm hover:bg-secondary" onClick={() => runAgendaJobsMutation.mutate('manual')}>Automação de encaixe</button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5 mb-6">
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA pendente</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.pending}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA enviado</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.sent}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">WA falhou</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.failed}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Inbound aplicado</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.inboundApplied}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-card">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Jobs concluídos</p>
-            <p className="text-xl font-semibold">{whatsappOpsSummary.jobSuccess}</p>
-          </CardContent>
-        </Card>
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+        <AgendaStatCard value={operationalSummary.totalInView} label="Agendamentos no período" icon={CalendarCheck2} />
+        <AgendaStatCard value={operationalSummary.today} label="Atendimentos hoje" icon={Clock3} />
+        <AgendaStatCard value={operationalSummary.confirmedToday} label="Confirmados hoje" icon={CheckCircle2} tone="success" />
+        <AgendaStatCard value={operationalSummary.awaitingToday} label="Aguardando confirmação" icon={Clock3} tone="warning" />
+        <AgendaStatCard value={operationalSummary.noShow} label="Faltas no período" icon={X} tone="danger" />
+        <AgendaStatCard value={waitlistEntries.length} label="Na lista de espera" icon={BellRing} />
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate_(-1)} className="p-2 rounded-lg hover:bg-secondary"><ChevronLeft className="w-5 h-5" /></button>
-          <h2 className="text-lg font-semibold text-foreground capitalize min-w-[200px] text-center">{headerLabel}</h2>
-          <button onClick={() => navigate_(1)} className="p-2 rounded-lg hover:bg-secondary"><ChevronRight className="w-5 h-5" /></button>
+      <div className="mb-3 flex flex-col gap-2 rounded-xl border bg-card p-2.5 shadow-sm xl:flex-row xl:items-center">
+        <div className="flex min-w-0 shrink-0 items-center gap-1">
+          <button aria-label="Período anterior" onClick={() => navigate_(-1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronLeft className="h-5 w-5" /></button>
+          <button aria-label="Próximo período" onClick={() => navigate_(1)} className="rounded-lg p-2 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><ChevronRight className="h-5 w-5" /></button>
+          <BrandButton size="sm" variant="outline" className="ml-1 h-9" onClick={() => setCurrentDate(new Date())}>Hoje</BrandButton>
+          <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+          <h2 className="mx-1 max-w-[120px] truncate whitespace-nowrap text-sm font-semibold capitalize text-foreground sm:text-base" title={headerLabel}>{headerLabel}</h2>
         </div>
-
-        <div className="flex items-center gap-3">
-          <Select value={filterProfessional} onValueChange={setFilterProfessional}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Todos profissionais" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os responsáveis</SelectItem>
-              <SelectItem value="unassigned">Não atribuído</SelectItem>
-              {professionals.map(p => (
-                <SelectItem key={p.user_id} value={p.user_id}>
-                  <span className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full inline-block" style={{ background: p.color }} />
-                    {p.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Popover open={searchOpen && agendaSearch.trim().length >= 2} onOpenChange={setSearchOpen}>
+          <PopoverTrigger asChild>
+            <div className="relative w-full min-w-0 md:w-[240px] md:flex-none xl:ml-1">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input value={agendaSearch} onFocus={() => setSearchOpen(true)} onChange={(event) => { setAgendaSearch(event.target.value); setSearchOpen(true); }} className="h-9 pl-9" placeholder="Buscar paciente ou agendamento" aria-label="Buscar paciente ou agendamento" />
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-[360px] max-w-[calc(100vw-2rem)] p-1" align="start" onOpenAutoFocus={(event) => event.preventDefault()}>
+            {searchResults.length === 0 ? <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nenhum agendamento encontrado neste período.</p> : (
+              <div className="max-h-80 overflow-y-auto">
+                {searchResults.map((appointment) => (
+                  <button key={appointment.id} type="button" className="w-full rounded-lg px-3 py-2.5 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => selectSearchResult(appointment)}>
+                    <p className="text-sm font-semibold">{getAppointmentDisplayName(appointment)}</p>
+                    <p className="text-xs text-muted-foreground">{(appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento'} · {getProfessionalLabel(appointment.professional_id)}</p>
+                    <p className="mt-1 text-xs text-primary">{format(getAppointmentStartDate(appointment), "dd/MM/yyyy '·' HH:mm")}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+        <div className="flex min-w-0 flex-wrap items-center gap-2.5 xl:ml-auto xl:justify-end 2xl:flex-nowrap">
+          {viewMode === 'doctors-day' ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <BrandButton variant="outline" className="min-w-[210px] justify-between">
+                  <span className="flex items-center gap-2"><Stethoscope className="h-4 w-4" />{selectedDoctorIds.length} médico(s)</span>
+                  <ChevronDown className="h-4 w-4" />
+                </BrandButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Médicos exibidos no dia</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedDoctorIds.length === professionals.length && professionals.length > 0}
+                  onCheckedChange={(checked) => setSelectedDoctorIds(checked ? professionals.map((professional) => professional.id) : [])}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  Todos os médicos
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {professionals.map((professional) => (
+                  <DropdownMenuCheckboxItem
+                    key={professional.id}
+                    checked={selectedDoctorIds.includes(professional.id)}
+                    onCheckedChange={(checked) => setSelectedDoctorIds((current) => checked
+                      ? Array.from(new Set([...current, professional.id]))
+                      : current.filter((id) => id !== professional.id))}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    <span className="mr-2 h-3 w-3 rounded-full" style={{ background: professional.color }} />
+                    {professional.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Select value={filterProfessional} onValueChange={setFilterProfessional}>
+              <SelectTrigger
+                className="h-9 w-[170px] min-w-0 [&>span:first-child]:block [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:whitespace-nowrap"
+                title={filterProfessionalLabel}
+              >
+                <SelectValue placeholder="Selecionar médico" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os médicos</SelectItem>
+                <SelectItem value="unassigned">Não atribuído</SelectItem>
+                {professionals.map(p => (
+                  <SelectItem key={p.id} value={p.id}>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: p.color }} />
+                      <span className="truncate">{p.label}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[190px]"><SelectValue placeholder="Todos status" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[150px]"><SelectValue placeholder="Todos os status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos status</SelectItem>
+              <SelectItem value="all">Todos os status</SelectItem>
               <SelectItem value="scheduled">Agendado</SelectItem>
               <SelectItem value="confirmed">Confirmado</SelectItem>
               <SelectItem value="in_progress">Em andamento</SelectItem>
@@ -1621,119 +1550,155 @@ export default function AppointmentsPage() {
               <SelectItem value="no_show">Não compareceu</SelectItem>
             </SelectContent>
           </Select>
-          <Tabs value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
-            <TabsList>
-              <TabsTrigger value="month">Mês</TabsTrigger>
-              <TabsTrigger value="week">Semana</TabsTrigger>
-              <TabsTrigger value="day">Dia</TabsTrigger>
+          <Tabs className="shrink-0" value={viewMode} onValueChange={v => setViewMode(v as ViewMode)}>
+            <TabsList className="grid h-9 w-[240px] grid-cols-4">
+              <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm" value="day">Dia</TabsTrigger>
+              <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm" value="week">Semana</TabsTrigger>
+              <TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm" value="month">Mês</TabsTrigger>
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><TabsTrigger className="min-w-0 px-3 text-xs sm:text-sm" value="doctors-day">Equipe</TabsTrigger></TooltipTrigger><TooltipContent>Visualizar agendas dos profissionais lado a lado.</TooltipContent></Tooltip></TooltipProvider>
             </TabsList>
           </Tabs>
         </div>
       </div>
 
-      {todayQueue.length > 0 && (
-        <div className="bg-card rounded-xl shadow-card p-4 mb-6 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Fila operacional de hoje</h3>
-              <p className="text-xs text-muted-foreground">Os próximos atendimentos do dia para acompanhamento rápido.</p>
-            </div>
-            <BrandButton
-              size="sm"
-              variant="outline"
-              onClick={() => setQueueExpanded((current) => !current)}
-            >
-              {queueExpanded ? (
-                <>
-                  <ChevronUp className="w-4 h-4" />
-                  Ocultar
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-4 h-4" />
-                  Expandir
-                </>
-              )}
-            </BrandButton>
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="min-w-0" aria-label="Calendário de agendamentos">
+      {appointmentsLoading && (
+        <div className="rounded-xl border bg-card p-4 shadow-sm" aria-label="Carregando agenda">
+          <div className="mb-4 h-10 animate-pulse rounded-lg bg-secondary" />
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: 21 }).map((_, index) => <div key={index} className="h-20 animate-pulse rounded-lg bg-secondary/70" />)}
           </div>
-          {!queueExpanded ? (
-            <div className="rounded-lg border border-dashed bg-background/60 px-4 py-3 text-sm text-muted-foreground">
-              {todayQueue.length} atendimento(s) oculto(s) nesta fila.
+        </div>
+      )}
+      {appointmentsError && (
+        <div className="rounded-xl border border-destructive/20 bg-card px-6 py-12 text-center shadow-sm">
+          <AlertTriangle className="mx-auto mb-3 h-7 w-7 text-destructive" />
+          <p className="font-medium text-foreground">Não foi possível carregar a agenda.</p>
+          <BrandButton className="mt-4" variant="outline" onClick={() => refetchAppointments()}><RefreshCw className="h-4 w-4" /> Tentar novamente</BrandButton>
+        </div>
+      )}
+      {!appointmentsLoading && !appointmentsError && viewMode === 'doctors-day' && (
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-auto rounded-xl bg-card shadow-card animate-fade-in">
+          {selectedDoctors.length === 0 ? (
+            <div className="p-10 text-center">
+              <Stethoscope className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="font-medium text-foreground">Selecione pelo menos um médico</p>
+              <p className="mt-1 text-sm text-muted-foreground">Use o seletor de médicos acima.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {todayQueue.map((appointment) => (
-                <div key={appointment.id} className="rounded-lg border bg-background px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-foreground">{getAppointmentDisplayName(appointment)}</p>
-                      <BrandBadge status={statusConfig[appointment.status]?.badge || 'default'}>
-                        {statusConfig[appointment.status]?.label || appointment.status}
-                      </BrandBadge>
-                      {appointment.appointment_type === 'evaluation' && (
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                          Avaliação
-                        </span>
-                      )}
-                      {appointment.is_batch && (
-                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                          Lote
-                        </span>
-                      )}
+            <div
+              className="grid w-full min-w-max"
+              style={{ gridTemplateColumns: `64px repeat(${selectedDoctors.length}, minmax(280px, 1fr))` }}
+            >
+              <div className="sticky left-0 top-0 z-40 border-b border-r bg-card" />
+              {selectedDoctors.map((professional) => {
+                const appointmentCount = getApptsForDay(currentDate)
+                  .filter((appointment) => appointment.professional_id === professional.id).length;
+                return (
+                  <div key={`header-${professional.id}`} className="sticky top-0 z-30 border-b border-r bg-secondary/95 px-4 py-3 backdrop-blur">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: professional.color }} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground" title={professional.label}>{professional.label}</p>
+                        <p className="text-xs text-muted-foreground">{appointmentCount} agendamento(s)</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {format(getAppointmentStartDate(appointment), "HH:mm", { locale: ptBR })} · {(appointment.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {getProfessionalLabel(appointment.professional_id)}
-                    </p>
                   </div>
-                  <div className="flex gap-2 justify-end">
-                    <BrandButton size="sm" variant="outline" onClick={() => setViewAppt(appointment)}>
-                      Ver
-                    </BrandButton>
-                    {appointment.status === 'scheduled' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'confirmed' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Confirmar
-                      </BrandButton>
-                    )}
-                    {appointment.status === 'confirmed' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'in_progress' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Iniciar
-                      </BrandButton>
-                    )}
-                    {appointment.status === 'in_progress' && (
-                      <BrandButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateStatusMutation.mutate({ id: appointment.id, status: 'completed' })}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        Concluir
-                      </BrandButton>
-                    )}
-                    {appointment.appointment_type === 'evaluation' && appointment.status === 'completed' && (
-                      <BrandButton size="sm" variant="outline" onClick={() => openProposalFromEvaluation(appointment, false)}>
-                        Proposta
-                      </BrandButton>
-                    )}
-                    {(appointment.status === 'confirmed' || appointment.status === 'in_progress' || appointment.status === 'scheduled') && (
-                      <BrandButton size="sm" onClick={() => navigate(`/clinic/sessions?appointmentId=${appointment.id}`)}>
-                        <ClipboardList className="w-4 h-4" />
-                        Sessão
-                      </BrandButton>
-                    )}
-                  </div>
+                );
+              })}
+
+              <div className="sticky left-0 z-20 border-b border-r bg-card" />
+              {selectedDoctors.map((professional) => (
+                <button
+                  key={`new-${professional.id}`}
+                  type="button"
+                  className="border-b border-r px-4 py-2 text-left text-xs font-medium text-primary hover:bg-primary/5"
+                  onClick={() => {
+                    resetForm();
+                    setSelectedDate(format(currentDate, 'yyyy-MM-dd'));
+                    setSelectedProfessional(professional.id);
+                    setDialogOpen(true);
+                  }}
+                >
+                  + Novo agendamento para este médico
+                </button>
+              ))}
+
+              {halfHourSlots.flatMap((slot, slotIndex) => [
+                <div key={`team-time-${slot}`} className="sticky left-0 z-20 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">
+                  {slot}
+                </div>,
+                ...selectedDoctors.map((professional) => {
+                  const doctorAppointments = getApptsForDay(currentDate)
+                    .filter((appointment) => appointment.professional_id === professional.id);
+                  const slotAppointments = doctorAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                  const slotStart = new Date(`${format(currentDate, 'yyyy-MM-dd')}T${slot}:00`);
+                  const coveringAppointment = doctorAppointments.find((appointment) =>
+                    getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+                  );
+                  const doctorBlocks = getBlocksForDay(currentDate)
+                    .filter((block) => !block.professional_id || block.professional_id === professional.id);
+                  const startingBlock = doctorBlocks.find((block) => halfHourKey(new Date(block.start_at)) === slot);
+                  const coveringBlock = doctorBlocks.find((block) =>
+                    new Date(block.start_at) < slotStart && new Date(block.end_at) > slotStart
+                  );
+                  const isAvailable = isWithinProfessionalAvailability(currentDate, slot, professional.id);
+
+                  return (
+                    <div key={`${professional.id}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
+                      {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && (
+                        <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />
+                      )}
+                      {startingBlock ? (
+                        <div className="relative z-10 h-full overflow-hidden rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] text-amber-800" title={startingBlock.reason || 'Indisponível'}>
+                          <span className="block truncate font-medium">Bloqueado · {format(new Date(startingBlock.start_at), 'HH:mm')}–{format(new Date(startingBlock.end_at), 'HH:mm')}</span>
+                          <span className="block truncate">{startingBlock.reason || 'Indisponível'}</span>
+                        </div>
+                      ) : coveringBlock || (slotAppointments.length === 0 && coveringAppointment) ? (
+                        <div className="pointer-events-none h-full w-full" aria-label="Horário ocupado" />
+                      ) : slotAppointments.length === 0 ? (
+                        <button
+                          type="button"
+                          disabled={!isAvailable}
+                          className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed"
+                          onClick={() => openNewAppointmentAt(currentDate, slot, professional.id)}
+                          aria-label={isAvailable ? `Agendar com ${professional.label} às ${slot}` : `${professional.label} indisponível às ${slot}`}
+                        >
+                          + Agendar
+                        </button>
+                      ) : slotAppointments.map((appointment) => {
+                        const status = statusConfig[appointment.status];
+                        return (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            className={`relative z-10 w-full overflow-hidden rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${status?.style || ''}`}
+                            style={{ height: `${Math.max(44, ((appointment.duration_minutes || 60) / 30) * 48 - 4)}px` }}
+                            onClick={() => setViewAppt(appointment)}
+                            aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)} com ${professional.label}`}
+                          >
+                            <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                            <span className="block truncate text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                }),
+              ])}
+
+              <div className="sticky left-0 z-20 border-r bg-card px-1 py-2 text-right text-[9px] text-muted-foreground">Extras</div>
+              {selectedDoctors.map((professional) => (
+                <div key={`team-extras-${professional.id}`} className="min-h-9 border-r p-1">
+                  {getApptsForDay(currentDate)
+                    .filter((appointment) => appointment.professional_id === professional.id && !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment))))
+                    .map((appointment) => (
+                      <button key={appointment.id} type="button" className="w-full rounded-md border bg-background p-1.5 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="text-muted-foreground">Fora da grade operacional</span>
+                      </button>
+                    ))}
                 </div>
               ))}
             </div>
@@ -1741,46 +1706,14 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Professional legend */}
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        {professionals.length > 0 && viewMode !== 'day' && (
-          <div className="flex flex-wrap gap-3">
-            {professionals.map(p => (
-              <span key={p.user_id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="w-3 h-3 rounded-full" style={{ background: p.color }} />
-                {p.label}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.evaluations} avaliações
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.batches} sessões em lote
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.blocks} bloqueios
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {agendaSignals.blockedDays} dias com restrição
-          </span>
-          <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-            {waitlistEntries.length} em lista de espera
-          </span>
-        </div>
-      </div>
-
-      {/* Calendar */}
-      {viewMode === 'month' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden animate-fade-in">
-          <div className="grid grid-cols-7">
+      {!appointmentsLoading && !appointmentsError && viewMode === 'month' && (
+        <div className="overflow-x-auto rounded-xl bg-card shadow-card animate-fade-in">
+          <div className="grid min-w-[700px] grid-cols-7">
             {dayNames.map(d => (
               <div key={d} className="px-2 py-2 text-xs font-semibold text-muted-foreground text-center border-b bg-secondary/50">{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7">
+          <div className="grid min-w-[700px] grid-cols-7">
             {calendarDays.map((day, i) => {
               const dayAppts = getApptsForDay(day);
               const dayBlocks = getBlocksForDay(day);
@@ -1826,54 +1759,77 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {viewMode === 'week' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden animate-fade-in">
-          <div className="grid grid-cols-7">
-            {calendarDays.map((day, i) => {
-              const dayAppts = getApptsForDay(day);
+      {!appointmentsLoading && !appointmentsError && viewMode === 'week' && (
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-auto rounded-xl bg-card shadow-card animate-fade-in">
+          <div className="grid min-w-[680px]" style={{ gridTemplateColumns: `64px repeat(${Math.max(visibleCalendarDays.length, 1)}, minmax(108px, 1fr))` }}>
+            <div className="sticky left-0 top-0 z-30 border-b border-r bg-card" />
+            {visibleCalendarDays.map((day) => {
+              const isToday = isSameDay(day, now);
+              return <div key={day.toISOString()} className={`sticky top-0 z-20 border-b border-r px-2 py-2 text-center ${isToday ? 'bg-primary/10' : 'bg-secondary/95'}`}><span className="text-xs text-muted-foreground">{dayNames[day.getDay()]}</span> <span className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</span>{datesWithExistingEvents.has(format(day, 'yyyy-MM-dd')) && locationHours && !workingHoursPolicy.isLocationOpen(format(day, 'yyyy-MM-dd'), locationHours, locationScheduleExceptions) && <span className="ml-1 text-[9px] text-amber-700">exceção</span>}</div>;
+            })}
+            <div className="sticky left-0 z-10 border-b border-r bg-card" />
+            {visibleCalendarDays.map((day) => {
               const dayBlocks = getBlocksForDay(day);
-              const isToday = isSameDay(day, new Date());
-              return (
-                <div key={i} className="border-r min-h-[300px]">
-                  <div className={`px-2 py-2 text-center border-b ${isToday ? 'bg-primary/10' : 'bg-secondary/50'}`}>
-                    <div className="text-xs text-muted-foreground">{dayNames[i]}</div>
-                    <div className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</div>
-                  </div>
-                  <div className="p-1 space-y-1">
-                    {dayBlocks.length > 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        {dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''} neste dia
-                      </div>
-                    )}
-                    {dayAppts.map((a) => (
-                      <div
-                        key={a.id}
-                        className={`rounded p-2 text-xs text-white cursor-pointer ${statusConfig[a.status]?.style || ''}`}
-                        style={{ backgroundColor: getProfColor(a.professional_id) }}
-                        onClick={() => setViewAppt(a)}
+              return <div key={`blocks-${day.toISOString()}`} className="min-h-8 border-b border-r p-1">{dayBlocks.length > 0 && <div className="truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] text-amber-700"><Lock className="mr-1 inline h-3 w-3" />{dayBlocks.length} bloqueio{dayBlocks.length > 1 ? 's' : ''}</div>}</div>;
+            })}
+            {halfHourSlots.flatMap((slot, slotIndex) => [
+              <div key={`time-${slot}`} className="sticky left-0 z-10 h-12 border-b border-r border-dashed bg-card pr-2 pt-1 text-right text-[10px] font-medium text-muted-foreground">{slot}</div>,
+              ...visibleCalendarDays.map((day) => {
+                const dayAppointments = getApptsForDay(day);
+                const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+                const slotStart = new Date(`${format(day, 'yyyy-MM-dd')}T${slot}:00`);
+                const coveringAppointment = dayAppointments.find((appointment) =>
+                  getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+                );
+                const isCurrentDay = isSameDay(day, now);
+                const isAvailable = isWithinProfessionalAvailability(day, slot, visibleProfessionalId);
+                return (
+                  <div key={`${day.toISOString()}-${slot}`} className={`group relative h-12 border-b border-r border-dashed px-1 py-0.5 ${!isAvailable ? 'bg-muted/40' : ''}`}>
+                    {showCurrentTime && isCurrentDay && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute inset-x-0 z-20 border-t border-primary/70" style={{ top: currentTimeOffset }} />}
+                    {slotAppointments.length === 0 && coveringAppointment ? (
+                      <div className="pointer-events-none h-full w-full" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`} />
+                    ) : slotAppointments.length === 0 ? (
+                      <button type="button" disabled={!isAvailable} className="h-full w-full rounded text-[10px] text-transparent transition-colors enabled:hover:bg-primary/5 enabled:hover:text-primary enabled:focus-visible:bg-primary/5 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(day, slot)} aria-label={isAvailable ? `Agendar em ${format(day, 'dd/MM')} às ${slot}` : `Indisponível em ${format(day, 'dd/MM')} às ${slot}`}>+ Agendar</button>
+                    ) : slotAppointments.map((appointment) => (
+                      <button
+                        key={appointment.id}
+                        type="button"
+                        className={`relative z-10 w-full overflow-hidden rounded-md border bg-background px-1.5 py-1 text-left text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${statusConfig[appointment.status]?.style || ''}`}
+                        style={{ height: `${Math.max(44, ((appointment.duration_minutes || 60) / 30) * 48 - 4)}px` }}
+                        onClick={() => setViewAppt(appointment)}
+                        aria-label={`Abrir agendamento de ${getAppointmentDisplayName(appointment)}`}
                       >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <div className="font-semibold">{format(getAppointmentStartDate(a), 'HH:mm')}</div>
-                          <div className="flex gap-1">
-                            {a.appointment_type === 'evaluation' && <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px]">Avaliação</span>}
-                            {a.is_batch && <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px]">Lote</span>}
-                          </div>
-                        </div>
-                        <div className="truncate">{getAppointmentDisplayName(a)}</div>
-                        <div className="truncate opacity-80">{(a.treatments as { name?: string | null } | null)?.name}</div>
-                        <div className="truncate opacity-80">{getProfessionalLabel(a.professional_id)}</div>
-                      </div>
+                        <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                        <span className="block truncate text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min</span>
+                      </button>
                     ))}
                   </div>
-                </div>
-              );
-            })}
+                );
+              }),
+            ])}
+            <div className="sticky left-0 z-10 border-r bg-card px-1 py-2 text-right text-[9px] text-muted-foreground">Extras</div>
+            {visibleCalendarDays.map((day) => (
+              <div key={`extras-${day.toISOString()}`} className="min-h-9 border-r p-1">
+                {getApptsForDay(day).filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
+                  <button key={appointment.id} type="button" className="w-full rounded-md border bg-background p-1.5 text-left text-[10px] shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                    <span className="block truncate font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                    <span className="text-muted-foreground">Fora da grade operacional</span>
+                  </button>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {viewMode === 'day' && (
-        <div className="bg-card rounded-xl shadow-card p-4 animate-fade-in">
+      {!appointmentsLoading && !appointmentsError && viewMode === 'day' && (
+        <div className="max-h-[calc(100vh-330px)] min-h-[460px] overflow-y-auto rounded-xl bg-card p-3 shadow-card animate-fade-in">
+          {isCurrentDateClosed && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">Unidade fechada neste dia</p>
+              <p className="mt-1 text-xs text-amber-700">Não serão oferecidos novos horários. Agendamentos já existentes continuam visíveis como exceção operacional.</p>
+            </div>
+          )}
           {getBlocksForDay(currentDate).length > 0 && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-800">Dia com bloqueios operacionais</p>
@@ -1886,60 +1842,78 @@ export default function AppointmentsPage() {
               </div>
             </div>
           )}
-          {getApptsForDay(currentDate).length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Nenhum agendamento neste dia</p>
-          ) : (
-            <div className="space-y-3">
-              {getApptsForDay(currentDate).map((a) => {
-                const sc = statusConfig[a.status];
-                return (
-                  <div
-                    key={a.id}
-                    className={`p-4 rounded-lg border cursor-pointer hover:shadow-md transition-shadow ${sc?.style || ''}`}
-                    onClick={() => setViewAppt(a)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-foreground">{getAppointmentDisplayName(a)}</p>
-                          {a.appointment_type === 'evaluation' && (
-                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                              Avaliação
-                            </span>
-                          )}
-                          {a.is_batch && (
-                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                              Sessão em lote
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{(a.treatments as { name?: string | null } | null)?.name || 'Sem tratamento'}</p>
-                        <p className="text-xs text-muted-foreground">{getProfessionalLabel(a.professional_id)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-foreground">{format(getAppointmentStartDate(a), 'HH:mm')} - {format(getAppointmentEndDate(a), 'HH:mm')}</p>
-                        <div className="mt-1 flex items-center justify-end gap-2">
-                          <BrandBadge status={sc?.badge || 'default'}>{sc?.label || a.status}</BrandBadge>
-                          <BrandButton
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setViewAppt(a);
-                            }}
+          {(!isCurrentDateClosed || getApptsForDay(currentDate).length > 0) && <div className="divide-y">
+            {halfHourSlots.map((slot, slotIndex) => {
+              const dayAppointments = getApptsForDay(currentDate);
+              const slotAppointments = dayAppointments.filter((appointment) => halfHourKey(getAppointmentStartDate(appointment)) === slot);
+              const slotStart = new Date(`${format(currentDate, 'yyyy-MM-dd')}T${slot}:00`);
+              const coveringAppointment = dayAppointments.find((appointment) =>
+                getAppointmentStartDate(appointment) < slotStart && getAppointmentEndDate(appointment) > slotStart
+              );
+              const isAvailable = isWithinProfessionalAvailability(currentDate, slot, visibleProfessionalId);
+              return (
+                <div key={slot} className={`group relative grid min-h-[58px] grid-cols-[56px_1fr] gap-3 py-1 ${!isAvailable ? 'bg-muted/30' : ''}`}>
+                  {showCurrentTime && isSameDay(currentDate, now) && slotIndex === currentTimeSlotIndex && <div className="pointer-events-none absolute left-[68px] right-0 z-20 border-t border-primary/70" style={{ top: currentTimeDayOffset }}><span className="absolute -left-[52px] -top-2 text-[10px] font-medium text-primary">{format(now, 'HH:mm')}</span></div>}
+                  <span className="pt-2 text-xs font-medium text-muted-foreground">{slot}</span>
+                  {slotAppointments.length === 0 && coveringAppointment ? (
+                    <div className="pointer-events-none min-h-[48px]" aria-label={`Horário ocupado até ${format(getAppointmentEndDate(coveringAppointment), 'HH:mm')}`} />
+                  ) : slotAppointments.length === 0 ? (
+                    <button type="button" disabled={!isAvailable} className="min-h-[48px] rounded-lg border border-transparent text-left text-xs text-transparent transition enabled:hover:border-dashed enabled:hover:border-primary/30 enabled:hover:bg-primary/5 enabled:hover:px-3 enabled:hover:text-primary enabled:focus-visible:border-primary/30 enabled:focus-visible:bg-primary/5 enabled:focus-visible:px-3 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-2 enabled:focus-visible:ring-primary disabled:cursor-not-allowed" onClick={() => openNewAppointmentAt(currentDate, slot)} aria-label={isAvailable ? `Agendar às ${slot}` : `Indisponível às ${slot}`}>+ Agendar</button>
+                  ) : (
+                    <div className="space-y-1">
+                      {slotAppointments.map((appointment) => {
+                        const status = statusConfig[appointment.status];
+                        return (
+                          <button
+                            key={appointment.id}
+                            type="button"
+                            className={`relative z-10 flex w-full flex-col gap-2 overflow-hidden rounded-lg border bg-background px-3 py-2 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md sm:flex-row sm:items-start sm:justify-between ${status?.style || ''}`}
+                            style={{ minHeight: `${Math.max(48, ((appointment.duration_minutes || 60) / 30) * 58 - 8)}px` }}
+                            onClick={() => setViewAppt(appointment)}
                           >
-                            Ver
-                          </BrandButton>
-                        </div>
-                      </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</p>
+                              <p className="truncate text-xs text-muted-foreground">{appointment.billing_type === 'insurance' ? 'Convênio' : 'Particular'} · {appointment.duration_minutes || 60} min · {getProfessionalLabel(appointment.professional_id)}</p>
+                            </div>
+                            <BrandBadge status={status?.badge || 'default'}>{status?.label || appointment.status}</BrandBadge>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  )}
+                </div>
+              );
+            })}
+            {getApptsForDay(currentDate).filter((appointment) => !halfHourSlots.includes(halfHourKey(getAppointmentStartDate(appointment)))).map((appointment) => (
+              <button key={appointment.id} type="button" className="mt-2 w-full rounded-lg border bg-background p-3 text-left shadow-sm hover:shadow-md" onClick={() => setViewAppt(appointment)}>
+                <span className="font-semibold">{format(getAppointmentStartDate(appointment), 'HH:mm')}–{format(getAppointmentEndDate(appointment), 'HH:mm')} · {getAppointmentDisplayName(appointment)}</span>
+                <span className="ml-2 text-xs text-muted-foreground">Fora da grade operacional</span>
+              </button>
+            ))}
+          </div>}
         </div>
       )}
+        </main>
+        <AgendaSidePanel
+          date={currentDate}
+          onDateChange={(date) => { setCurrentDate(date); setViewMode('day'); }}
+          upcoming={todayQueue.slice(0, 3).map((appointment) => ({
+            id: appointment.id,
+            time: format(getAppointmentStartDate(appointment), 'HH:mm'),
+            title: getAppointmentDisplayName(appointment),
+            subtitle: (appointment.treatments as { name?: string | null } | null)?.name || 'Atendimento',
+            meta: getProfessionalLabel(appointment.professional_id),
+          }))}
+          waitlist={waitlistEntries.slice(0, 3).map((entry) => ({
+            id: entry.id,
+            title: entry.patients?.full_name || entry.leads?.full_name || 'Paciente',
+            subtitle: entry.treatments?.name || 'Qualquer atendimento',
+            meta: `Preferência: ${(entry.preferred_periods || []).join(', ') || 'qualquer período'}`,
+          }))}
+          onViewWaitlist={() => setWaitlistDialogOpen(true)}
+          onViewDay={() => { setCurrentDate(new Date()); setViewMode('day'); }}
+        />
+      </div>
 
       {/* Create dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -1952,7 +1926,7 @@ export default function AppointmentsPage() {
                 <AlertDescription>{createFormError}</AlertDescription>
               </Alert>
             )}
-            {appointmentType === 'session' ? (
+            {appointmentType !== 'evaluation' ? (
               <>
                 <div className="space-y-2">
                   <Label>Paciente *</Label>
@@ -1977,16 +1951,12 @@ export default function AppointmentsPage() {
                     </BrandButton>
                   </div>
                 </div>
-                {selectedPatient && (() => {
-                  const p = getSelectedPatientData(selectedPatient);
-                  return p ? <AnamneseAlertBanner status={p.current_anamnese_status} expiresAt={p.current_anamnese_expires_at} patientId={p.id} patientName={p.full_name} /> : null;
-                })()}
               </>
             ) : (
               <div className="space-y-2">
-                <Label>Lead *</Label>
+                <Label>Paciente *</Label>
                 <Select value={selectedLead} onValueChange={setSelectedLead}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar lead para avaliação" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecionar paciente para avaliação" /></SelectTrigger>
                   <SelectContent>
                     {leads.map((lead) => (
                       <SelectItem key={lead.id} value={lead.id}>
@@ -2005,56 +1975,29 @@ export default function AppointmentsPage() {
 
             <div className="space-y-2">
               <Label>Tipo de agendamento</Label>
-              <Select value={appointmentType} onValueChange={value => setAppointmentType(value as 'session' | 'evaluation')}>
+              <Select value={appointmentType} onValueChange={value => setAppointmentType(value as AppointmentType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="session">Sessão de paciente</SelectItem>
-                  <SelectItem value="evaluation">Avaliação de lead</SelectItem>
+                  <SelectItem value="consultation">Consulta</SelectItem>
+                  <SelectItem value="return">Retorno</SelectItem>
+                  <SelectItem value="evaluation">Avaliação</SelectItem>
+                  <SelectItem value="post_operative">Pós-Operatório</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>{appointmentType === 'evaluation' ? 'Tratamento de interesse' : 'Tratamento'}</Label>
-                <Select value={selectedTreatment} onValueChange={v => {
+              <Select value={selectedTreatment} onValueChange={v => {
                 setSelectedTreatment(v);
-                const source = appointmentType === 'session' ? sessionTreatmentOptions : treatments.map((t) => ({ id: t.id, name: t.name, duration: Number(t.duration_minutes || 60) }));
-                const t = source.find((tr) => tr.id === v);
-                if (t) setDuration(String(t.duration));
-              }} disabled={appointmentType === 'session' && (!selectedPatient || sessionTreatmentOptions.length === 0)}>
-                <SelectTrigger><SelectValue placeholder={appointmentType === 'session' && !selectedPatient ? 'Selecione um paciente' : appointmentType === 'session' && sessionTreatmentOptions.length === 0 ? 'Paciente sem tratamento contratado' : 'Selecionar tratamento'} /></SelectTrigger>
+              }}>
+                <SelectTrigger><SelectValue placeholder="Selecionar tratamento" /></SelectTrigger>
                 <SelectContent>
-                  {(appointmentType === 'session' ? sessionTreatmentOptions : treatments.map((t) => ({ id: t.id, name: t.name, duration_minutes: t.duration_minutes }))).map((t) => (
+                  {treatments.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {appointmentType === 'session' && selectedSessionTreatmentSummary && (
-                <div className="rounded-xl border bg-secondary/30 p-4 mt-2">
-                  <p className="text-sm font-medium text-foreground mb-2">Resumo operacional do tratamento</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Contratadas</p>
-                      <p className="text-lg font-semibold">{selectedSessionTreatmentSummary.contracted}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Realizadas</p>
-                      <p className="text-lg font-semibold">{selectedSessionTreatmentSummary.performed}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Saldo</p>
-                      <p className={`text-lg font-semibold ${selectedSessionTreatmentSummary.balance > 0 ? 'text-warning' : 'text-success'}`}>
-                        {selectedSessionTreatmentSummary.balance}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {appointmentType === 'session' && selectedTreatment && selectedSessionTreatmentSummary?.balance === 0 && (
-                <p className="text-xs text-destructive mt-1">
-                  Este tratamento está finalizado (saldo 0). Escolha outro tratamento com saldo para agendar.
-                </p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -2062,11 +2005,30 @@ export default function AppointmentsPage() {
               <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
                 <SelectTrigger><SelectValue placeholder="Selecionar profissional" /></SelectTrigger>
                 <SelectContent>
-                  {professionals.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.label}</SelectItem>)}
+                  {professionals.map(p => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
                 </SelectContent>
               </Select>
               {appointmentType === 'evaluation' && !selectedProfessional && (
                 <p className="text-xs text-amber-700">Escolha quem fará a avaliação para ela aparecer na agenda correta.</p>
+              )}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Modalidade da consulta</Label>
+                <Select value={billingType} onValueChange={value => { setBillingType(value as 'private' | 'insurance'); setSelectedHealthInsurance(''); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="private">Particular</SelectItem><SelectItem value="insurance">Convênio</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {billingType === 'insurance' && (
+                <div className="space-y-2">
+                  <Label>Convênio</Label>
+                  <Select value={selectedHealthInsurance} onValueChange={setSelectedHealthInsurance} disabled={!selectedProfessional}>
+                    <SelectTrigger><SelectValue placeholder={selectedProfessional ? 'Selecionar convênio' : 'Selecione o profissional'} /></SelectTrigger>
+                    <SelectContent>{appointmentDurationSettings?.insuranceLinks.map(link => <SelectItem key={link.health_insurance_id} value={link.health_insurance_id}>{link.health_insurances?.name || 'Convênio'} · {link.appointment_duration_minutes} min</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
               )}
             </div>
 
@@ -2081,7 +2043,8 @@ export default function AppointmentsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Duração (min)</Label>
-                <Input type="number" value={duration} onChange={e => setDuration(e.target.value)} />
+                <Input type="number" value={duration} readOnly className="bg-muted/50" />
+                <p className="text-[11px] text-muted-foreground">Definida pela regra de {billingType === 'insurance' ? 'convênio' : 'consulta particular'} deste profissional.</p>
               </div>
             </div>
             <div className="space-y-2">
@@ -2093,7 +2056,7 @@ export default function AppointmentsPage() {
               <BrandButton
                 type="submit"
                 className="flex-1"
-                disabled={createMutation.isPending || (appointmentType === 'session' ? (!selectedPatient || !selectedTreatment || !hasSessionBalance) : !selectedLead) || !selectedProfessional}
+                disabled={createMutation.isPending || (appointmentType === 'evaluation' ? !selectedLead : !selectedPatient) || !selectedProfessional || (billingType === 'insurance' && !selectedHealthInsurance)}
               >
                 {createMutation.isPending ? 'Criando...' : appointmentType === 'evaluation' ? 'Agendar avaliação' : 'Agendar'}
               </BrandButton>
@@ -2102,19 +2065,16 @@ export default function AppointmentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* View appointment */}
-      <Dialog open={!!viewAppt} onOpenChange={() => setViewAppt(null)}>
-        <DialogContent className="max-w-md">
+      {/* Appointment quick view */}
+      <Sheet open={!!viewAppt} onOpenChange={(open) => !open && setViewAppt(null)}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
           {viewAppt && (
             <>
-              <DialogHeader>
-                <DialogTitle>Agendamento</DialogTitle>
-              </DialogHeader>
+              <SheetHeader>
+                <SheetTitle>{getAppointmentDisplayName(viewAppt)}</SheetTitle>
+                <SheetDescription>{(viewAppt.treatments as { name?: string | null } | null)?.name || appointmentTypeLabels[(viewAppt.appointment_type as AppointmentType | 'session') || 'consultation'] || 'Atendimento'}</SheetDescription>
+              </SheetHeader>
               <div className="space-y-4 mt-4">
-                {(() => {
-                  const p = getSelectedPatientData(viewAppt.patient_id);
-                  return p ? <AnamneseAlertBanner status={p?.current_anamnese_status} expiresAt={p?.current_anamnese_expires_at} patientId={viewAppt.patient_id} patientName={(viewAppt.patients as { full_name?: string | null; dissatisfaction_flag?: boolean | null; dissatisfaction_level?: string | null; dissatisfaction_reason?: string | null } | null)?.full_name} showActions={false} /> : null;
-                })()}
                 {(viewAppt.patients as { full_name?: string | null; dissatisfaction_flag?: boolean | null; dissatisfaction_level?: string | null; dissatisfaction_reason?: string | null } | null)?.dissatisfaction_flag && (
                   <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive bg-destructive/5">
                     <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
@@ -2126,11 +2086,15 @@ export default function AppointmentsPage() {
                 )}
                 <div className="text-sm space-y-2">
                   <div className="flex justify-between"><span className="text-muted-foreground">Paciente:</span><span className="font-medium">{getAppointmentDisplayName(viewAppt)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Tipo:</span><span className="font-medium">{viewAppt.appointment_type === 'evaluation' ? 'Avaliação' : 'Sessão'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Tipo:</span><span className="font-medium">{appointmentTypeLabels[(viewAppt.appointment_type as AppointmentType | 'session') || 'consultation'] || 'Consulta'}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Profissional:</span><span className="font-medium">{getProfessionalLabel(viewAppt.professional_id)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Unidade:</span><span className="font-medium">{locations.find((location) => location.id === viewAppt.location_id)?.name || 'Unidade atual'}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Tratamento:</span><span className="font-medium">{(viewAppt.treatments as { name?: string | null } | null)?.name || '—'}</span></div>
+                  {(viewAppt.patients as { phone?: string | null } | null)?.phone && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">Contato:</span><span className="font-medium">{(viewAppt.patients as { phone?: string | null } | null)?.phone}</span></div>
+                  )}
                   {(viewAppt.leads as { phone?: string | null } | null)?.phone && (
-                    <div className="flex justify-between"><span className="text-muted-foreground">Contato do lead:</span><span className="font-medium">{(viewAppt.leads as { phone?: string | null } | null)?.phone}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Contato do paciente:</span><span className="font-medium">{(viewAppt.leads as { phone?: string | null } | null)?.phone}</span></div>
                   )}
                   <div className="flex justify-between"><span className="text-muted-foreground">Horário:</span><span className="font-medium">{format(getAppointmentStartDate(viewAppt), 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(getAppointmentEndDate(viewAppt), 'HH:mm')}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted-foreground">Status:</span><BrandBadge status={statusConfig[viewAppt.status]?.badge || 'default'}>{statusConfig[viewAppt.status]?.label || viewAppt.status}</BrandBadge></div>
@@ -2142,13 +2106,13 @@ export default function AppointmentsPage() {
                     <Label>Reatribuir profissional</Label>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Select value={reassignProfessional} onValueChange={setReassignProfessional}>
-                        <SelectTrigger className="sm:flex-1">
+                        <SelectTrigger id="appointment-professional-editor" className="sm:flex-1">
                           <SelectValue placeholder="Selecionar profissional" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="unassigned">Sem profissional</SelectItem>
                           {professionals.map((professional) => (
-                            <SelectItem key={professional.user_id} value={professional.user_id}>
+                            <SelectItem key={professional.id} value={professional.id}>
                               {professional.label}
                             </SelectItem>
                           ))}
@@ -2192,23 +2156,18 @@ export default function AppointmentsPage() {
                       <Check className="w-4 h-4" /> Concluir atendimento
                     </BrandButton>
                   )}
-                  {viewAppt.appointment_type === 'evaluation' && viewAppt.status === 'in_progress' && (
-                    <BrandButton size="sm" onClick={() => openProposalFromEvaluation(viewAppt, true)} disabled={proposalLoadingId === viewAppt.id}>
-                      <CalendarCheck2 className="w-4 h-4" /> {proposalLoadingId === viewAppt.id ? 'Abrindo...' : 'Finalizar e abrir proposta'}
-                    </BrandButton>
-                  )}
-                  {viewAppt.appointment_type === 'evaluation' && viewAppt.status === 'completed' && (
-                    <BrandButton size="sm" variant="outline" onClick={() => openProposalFromEvaluation(viewAppt, false)} disabled={proposalLoadingId === viewAppt.id}>
-                      <CalendarCheck2 className="w-4 h-4" /> {proposalLoadingId === viewAppt.id ? 'Abrindo...' : 'Abrir proposta'}
-                    </BrandButton>
-                  )}
                   {canAdjustAppointment && (
                     <>
                       <BrandButton size="sm" variant="outline" onClick={() => openExceptionModal('reschedule', viewAppt)}>
-                        Remarcar agendamento
+                        <CalendarRange className="h-4 w-4" /> Remarcar
                       </BrandButton>
+                      {!isProfessional && (
+                        <BrandButton size="sm" variant="outline" onClick={() => document.getElementById('appointment-professional-editor')?.focus()}>
+                          Editar responsável
+                        </BrandButton>
+                      )}
                       <BrandButton size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => openExceptionModal('cancel', viewAppt)}>
-                        <X className="w-4 h-4" /> Cancelar agendamento
+                        <X className="w-4 h-4" /> Cancelar
                       </BrandButton>
                       <BrandButton size="sm" variant="outline" onClick={() => openExceptionModal('no_show', viewAppt)}>
                         <AlertTriangle className="w-4 h-4" /> Registrar não comparecimento
@@ -2230,8 +2189,8 @@ export default function AppointmentsPage() {
               </div>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={!!exceptionModal} onOpenChange={() => setExceptionModal(null)}>
         <DialogContent className="max-w-lg">
@@ -2277,7 +2236,8 @@ export default function AppointmentsPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Duração</Label>
-                        <Input type="number" value={rescheduleDuration} onChange={(event) => setRescheduleDuration(event.target.value)} />
+                        <Input type="number" value={rescheduleDuration} readOnly className="bg-muted/50" />
+                        <p className="text-[11px] text-muted-foreground">Recalculada pela regra ao salvar.</p>
                       </div>
                     </div>
 
@@ -2289,7 +2249,7 @@ export default function AppointmentsPage() {
                           <SelectContent>
                             <SelectItem value="unassigned">Sem profissional</SelectItem>
                             {professionals.map((professional) => (
-                              <SelectItem key={professional.user_id} value={professional.user_id}>
+                              <SelectItem key={professional.id} value={professional.id}>
                                 {professional.label}
                               </SelectItem>
                             ))}
@@ -2329,9 +2289,7 @@ export default function AppointmentsPage() {
 
       <Dialog open={availabilityDialogOpen} onOpenChange={setAvailabilityDialogOpen}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Disponibilidade semanal</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Disponibilidade semanal por profissional</DialogTitle></DialogHeader>
           <div className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label>Profissional</Label>
@@ -2339,57 +2297,24 @@ export default function AppointmentsPage() {
                 <SelectTrigger><SelectValue placeholder="Selecionar profissional" /></SelectTrigger>
                 <SelectContent>
                   {professionals.map((professional) => (
-                    <SelectItem key={professional.user_id} value={professional.user_id}>
+                    <SelectItem key={professional.id} value={professional.id}>
                       {professional.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-3">
-              {weekDays.map((day) => {
-                const row = availabilityDraft[day.value] || { isActive: false, start: '09:00', end: '18:00' };
-                return (
-                  <div key={day.value} className="grid grid-cols-[160px_100px_1fr_1fr] gap-3 items-center rounded-xl border p-3">
-                    <p className="text-sm font-medium text-foreground">{day.label}</p>
-                    <Select
-                      value={row.isActive ? 'active' : 'inactive'}
-                      onValueChange={(value) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: {
-                          ...row,
-                          isActive: value === 'active',
-                        },
-                      }))}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Ativo</SelectItem>
-                        <SelectItem value="inactive">Inativo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="time"
-                      value={row.start}
-                      disabled={!row.isActive}
-                      onChange={(event) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: { ...row, start: event.target.value },
-                      }))}
-                    />
-                    <Input
-                      type="time"
-                      value={row.end}
-                      disabled={!row.isActive}
-                      onChange={(event) => setAvailabilityDraft((current) => ({
-                        ...current,
-                        [day.value]: { ...row, end: event.target.value },
-                      }))}
-                    />
-                  </div>
-                );
-              })}
+            <p className="text-xs text-muted-foreground">Unidade: {locations.find((location) => location.id === selectedLocationId)?.name || 'Unidade selecionada'}. É possível cadastrar vários períodos no mesmo dia, por exemplo manhã e tarde.</p>
+            <WeeklyHoursEditor idPrefix={`professional-${availabilityProfessional}`} value={availabilityDraft} onChange={setAvailabilityDraft} />
+            <div className="space-y-3 rounded-xl border p-4">
+              <p className="text-sm font-semibold">Folga ou horário especial por data</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div><Label htmlFor="professional-exception-date">Data</Label><Input id="professional-exception-date" type="date" value={professionalExceptionDate} onChange={(event) => setProfessionalExceptionDate(event.target.value)} /></div>
+                <div><Label>Regra</Label><Select value={professionalExceptionClosed ? 'closed' : 'special'} onValueChange={(value) => setProfessionalExceptionClosed(value === 'closed')}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="closed">Folga / ausência</SelectItem><SelectItem value="special">Horário especial</SelectItem></SelectContent></Select></div>
+                <div><Label htmlFor="professional-exception-reason">Motivo</Label><Input id="professional-exception-reason" value={professionalExceptionReason} onChange={(event) => setProfessionalExceptionReason(event.target.value)} placeholder="Férias, congresso..." /></div>
+              </div>
+              {!professionalExceptionClosed && <div className="grid max-w-md grid-cols-[1fr_auto_1fr] items-center gap-2"><Input aria-label="Início do horário especial do profissional" type="time" value={professionalExceptionStart} onChange={(event) => setProfessionalExceptionStart(event.target.value)} /><span>até</span><Input aria-label="Fim do horário especial do profissional" type="time" value={professionalExceptionEnd} onChange={(event) => setProfessionalExceptionEnd(event.target.value)} /></div>}
+              <BrandButton type="button" variant="outline" onClick={() => saveProfessionalExceptionMutation.mutate()} disabled={saveProfessionalExceptionMutation.isPending || !professionalExceptionDate}>Salvar exceção</BrandButton>
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -2420,7 +2345,7 @@ export default function AppointmentsPage() {
                     <SelectContent>
                       <SelectItem value="all">Bloqueio geral</SelectItem>
                       {professionals.map((professional) => (
-                        <SelectItem key={professional.user_id} value={professional.user_id}>
+                        <SelectItem key={professional.id} value={professional.id}>
                           {professional.label}
                         </SelectItem>
                       ))}
@@ -2533,16 +2458,16 @@ export default function AppointmentsPage() {
                   <Select value={waitlistTargetType} onValueChange={(value) => setWaitlistTargetType(value as WaitlistTargetType)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lead">Lead</SelectItem>
-                      <SelectItem value="patient">Paciente</SelectItem>
+                      <SelectItem value="lead">Paciente em avaliação</SelectItem>
+                      <SelectItem value="patient">Paciente cadastrado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {waitlistTargetType === 'lead' ? (
                   <div className="space-y-2">
-                    <Label>Lead *</Label>
+                    <Label>Paciente em avaliação *</Label>
                     <Select value={waitlistLeadId} onValueChange={setWaitlistLeadId}>
-                      <SelectTrigger><SelectValue placeholder="Selecionar lead" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Selecionar paciente" /></SelectTrigger>
                       <SelectContent>
                         {leads.map((lead) => (
                           <SelectItem key={lead.id} value={lead.id}>{lead.full_name}</SelectItem>
@@ -2573,7 +2498,7 @@ export default function AppointmentsPage() {
                     <SelectContent>
                       <SelectItem value="any">Qualquer profissional</SelectItem>
                       {professionals.map((professional) => (
-                        <SelectItem key={professional.user_id} value={professional.user_id}>{professional.label}</SelectItem>
+                        <SelectItem key={professional.id} value={professional.id}>{professional.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2662,7 +2587,7 @@ export default function AppointmentsPage() {
 
               <div className="space-y-2">
                 <Label>Observações</Label>
-                <Textarea rows={2} value={waitlistNotes} onChange={(event) => setWaitlistNotes(event.target.value)} placeholder="Preferências extras do paciente/lead" />
+                <Textarea rows={2} value={waitlistNotes} onChange={(event) => setWaitlistNotes(event.target.value)} placeholder="Preferências extras do paciente" />
               </div>
 
               <div className="flex justify-end gap-2">
@@ -2718,7 +2643,7 @@ export default function AppointmentsPage() {
                     <div key={notification.id} className="rounded-xl border p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div>
                         <p className="font-medium text-foreground">
-                          {notification.appointment_waitlist?.patient_id ? 'Paciente' : 'Lead'} · {notification.appointment_waitlist?.id.slice(0, 8)}
+                          Paciente · {notification.appointment_waitlist?.id.slice(0, 8)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(notification.matched_slot_start), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} - {format(new Date(notification.matched_slot_end), "HH:mm", { locale: ptBR })}

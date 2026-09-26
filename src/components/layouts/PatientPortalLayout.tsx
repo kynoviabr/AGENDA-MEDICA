@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  Home, FileText, CreditCard, CalendarDays, Activity, Camera, MessageSquare, LogOut
+  Home, LogOut
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBranding } from '@/contexts/BrandingContext';
@@ -9,12 +9,6 @@ import NotificationBell from '@/components/NotificationBell';
 
 const portalNav = [
   { to: '/portal', icon: Home, label: 'Início' },
-  { to: '/portal/contract', icon: FileText, label: 'Contrato' },
-  { to: '/portal/payments', icon: CreditCard, label: 'Pagamentos' },
-  { to: '/portal/sessions', icon: CalendarDays, label: 'Sessões' },
-  { to: '/portal/evolution', icon: Activity, label: 'Evolução' },
-  { to: '/portal/photos', icon: Camera, label: 'Fotos' },
-  { to: '/portal/feedback', icon: MessageSquare, label: 'Avaliação' },
 ];
 
 /**
@@ -35,7 +29,7 @@ export default function PatientPortalLayout() {
               {clinicName}
             </p>
             <h1 className="font-heading font-semibold text-white text-[15px] leading-tight mt-0.5 truncate">
-              Meu Tratamento
+              Minha Agenda
             </h1>
           </div>
           <div className="flex items-center gap-1">

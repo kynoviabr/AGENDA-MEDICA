@@ -6,13 +6,15 @@ import { toast } from 'sonner';
 export interface Professional {
   id: string;
   clinic_id: string;
-  user_id: string;
+  user_id: string | null;
   role_id: string | null;
   class_entity_id: string | null;
   full_name: string;
   cpf: string | null;
   email: string | null;
   phone: string | null;
+  additional_phones: string[];
+  private_consultation_price: number | null;
   registration_number: string | null;
   specialty: string | null;
   status: string;
@@ -20,7 +22,9 @@ export interface Professional {
   updated_at: string;
 }
 
-type ProfessionalInsert = Omit<Professional, 'id' | 'created_at' | 'updated_at' | 'clinic_id'>;
+type ProfessionalInsert = Omit<Professional, 'id' | 'created_at' | 'updated_at' | 'clinic_id' | 'private_consultation_price'> & {
+  private_consultation_price?: number | null;
+};
 type ProfessionalUpdate = Partial<ProfessionalInsert>;
 
 interface Filters {

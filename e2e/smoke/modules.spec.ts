@@ -3,14 +3,11 @@ import { login } from '../helpers/auth';
 
 const moduleChecks = [
   { menu: 'Dashboard', url: /\/clinic(\/dashboard)?(\/|$)/i, heading: /dashboard/i },
-  { menu: 'CRM', url: /\/clinic\/crm/i, heading: /crm kanban/i },
-  { menu: 'Pacientes', url: /\/clinic\/patients/i, heading: /pacientes/i },
   { menu: 'Agenda', url: /\/clinic\/appointments/i, heading: /agenda/i },
-  { menu: 'Propostas', url: /\/clinic\/proposals/i, heading: /propostas/i },
-  { menu: 'Contratos', url: /\/clinic\/contracts/i, heading: /contratos/i },
-  { menu: 'Financeiro Contratos', url: /\/clinic\/finance\/contracts/i, heading: /financeiro/i },
-  { menu: 'Pagamentos', url: /\/clinic\/payments/i, heading: /pagamentos/i },
-  { menu: 'Sessões', url: /\/clinic\/sessions/i, heading: /sessões|sessoes/i },
+  { menu: 'CRM', url: /\/clinic\/crm/i, heading: /micro crm/i },
+  { menu: 'WhatsApp IA', url: /\/clinic\/whatsapp-ai/i, heading: /whatsapp ia/i },
+  { menu: 'Pacientes', url: /\/clinic\/patients/i, heading: /pacientes/i },
+  { menu: 'Tratamentos', url: /\/clinic\/treatments/i, heading: /serviços/i },
 ];
 
 test.describe('Smoke - módulos principais', () => {
