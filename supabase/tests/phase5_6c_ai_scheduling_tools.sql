@@ -71,13 +71,9 @@ BEGIN
   IF (SELECT count(*) FROM public.ai_tool_execution_events) <> 1 THEN
     RAISE EXCEPTION 'TEST_FAILED: audit events leaked across clinics';
   END IF;
-  BEGIN
-    PERFORM public.claim_ai_tool_mutation(
-      'c2000000-0000-0000-0000-000000000001', 'c4000000-0000-0000-0000-000000000001',
-      'c3000000-0000-0000-0000-000000000004', 'confirm_appointment');
+  IF has_function_privilege('authenticated', 'public.claim_ai_tool_mutation(uuid,uuid,uuid,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'TEST_FAILED: authenticated role claimed a mutation';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  END IF;
 END
 $$;
 

@@ -26,9 +26,9 @@ function loadSimpleEnvFile(filename: string) {
   }
 }
 
-loadSimpleEnvFile('.env');
-loadSimpleEnvFile('.env.e2e');
 loadSimpleEnvFile('.env.e2e.local');
+loadSimpleEnvFile('.env.e2e');
+loadSimpleEnvFile('.env');
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:8080';
 
@@ -51,9 +51,9 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 8080',
+    command: 'npm run dev -- --host 127.0.0.1 --port 8081',
     url: baseURL,
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [

@@ -57,11 +57,10 @@ DO $$ BEGIN
 EXCEPTION WHEN insufficient_privilege THEN NULL; END $$;
 
 DO $$ BEGIN
-  PERFORM public.record_ai_operational_event(
-    '21000000-0000-4000-8000-000000000001','31000000-0000-4000-8000-000000000001',gen_random_uuid(),
-    'whatsapp','ai_processing_failed','conversation','failure','UNKNOWN','unknown',false,1);
-  RAISE EXCEPTION 'authenticated user wrote backend event';
-EXCEPTION WHEN insufficient_privilege THEN NULL; END $$;
+  IF has_function_privilege('authenticated', 'public.record_ai_operational_event(uuid,uuid,uuid,text,text,text,text,text,text,boolean,integer)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'authenticated user wrote backend event';
+  END IF;
+END $$;
 
 DO $$ BEGIN
   UPDATE public.whatsapp_ai_settings SET ai_engine_mode='active',ai_knowledge_enabled=true,ai_knowledge_validated_at=now()

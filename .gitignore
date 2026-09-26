@@ -35,3 +35,4 @@ tmp-settings.png
 .env
 .env.local
 .env.*.local
+.env.e2e

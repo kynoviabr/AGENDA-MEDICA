@@ -125,15 +125,9 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 
-  BEGIN
-    PERFORM public.update_whatsapp_ai_conversation_state(
-      'a2000000-0000-0000-0000-000000000001',
-      'a4000000-0000-0000-0000-000000000001', 1,
-      (SELECT conversation_state FROM public.whatsapp_ai_conversations WHERE id = 'a4000000-0000-0000-0000-000000000001')
-    );
+  IF has_function_privilege('authenticated', 'public.update_whatsapp_ai_conversation_state(uuid,uuid,integer,jsonb)', 'EXECUTE') THEN
     RAISE EXCEPTION 'TEST_FAILED: authenticated role executed technical state RPC';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  END IF;
 END
 $$;
 

@@ -6,6 +6,8 @@
 --   3. only then replace the foreign keys;
 --   4. preserve professionals without a valid login by setting user_id to NULL.
 
+BEGIN;
+
 LOCK TABLE public.professionals,
   public.appointments,
   public.professional_availability,
@@ -231,3 +233,5 @@ COMMENT ON COLUMN public.professionals.user_id IS
   'Optional Supabase Auth login. The professional can operate in the agenda without a user account.';
 COMMENT ON COLUMN public.appointments.professional_id IS
   'Canonical professional identity; references public.professionals.id.';
+
+COMMIT;
