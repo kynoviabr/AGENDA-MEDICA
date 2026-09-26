@@ -61,8 +61,8 @@ const App = () => (
                 <Route path="settings" element={<SettingsPage />} />
 
                 {/*
-                  MVP legado preservado, porém desativado nesta fase do produto.
-                  O wildcard impede acesso direto sem excluir as implementações.
+                  Rotas do MVP legado bloqueadas nesta fase do produto.
+                  Os wildcards mantêm links antigos seguros sem reabrir os módulos.
                   Consulte README.md > "Módulos MVP desativados".
                 */}
                 <Route path="proposals/*" element={<Navigate to="/clinic" replace />} />

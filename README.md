@@ -127,7 +127,7 @@ O repositório contém código de um MVP anterior para os módulos abaixo, mas e
 - As permissões dos módulos desativados não são oferecidas na gestão de grupos de acesso.
 - Os recursos equivalentes de Contratos, Pagamentos, Sessões, Evolução, Fotos e Feedback também não aparecem no portal do paciente.
 - Tentativas de abrir diretamente as rotas desses módulos são redirecionadas para o início da área correspondente.
-- O código-fonte, componentes, páginas, permissões e estrutura de banco foram preservados como referência do MVP.
+- As páginas e placeholders órfãos do MVP foram removidos. Migrations, tipos, permissões de compatibilidade e tabelas permanecem apenas onde ainda são necessários para preservar dados existentes e a evolução segura do banco.
 - Nenhum desses módulos deve ser considerado funcional, suportado ou parte do escopo comercial atual.
 
 ### Possível reativação futura
