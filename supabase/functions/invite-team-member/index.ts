@@ -57,6 +57,7 @@ serve(async (req) => {
       });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify caller is admin of this clinic
@@ -71,27 +72,30 @@ serve(async (req) => {
 
     // Check if user already exists in auth
     const { data: { users: existingUsers } } = await adminClient.auth.admin.listUsers();
-    const existingUser = existingUsers?.find((u: unknown) => u.email === email.toLowerCase().trim());
+    const existingUser = existingUsers?.find((u: unknown) => u.email?.toLowerCase().trim() === cleanEmail);
 
     if (existingUser) {
-      // Check if already has a role in this clinic
+      // Check if already has an active role in this clinic
       const { data: existingRole } = await adminClient
         .from("user_roles")
-        .select("id")
+        .select("id, is_active")
         .eq("user_id", existingUser.id)
         .eq("clinic_id", clinicId)
         .maybeSingle();
 
-      if (existingRole) {
+      if (existingRole && existingRole.is_active) {
         return new Response(JSON.stringify({ error: "Este usuário já faz parte da equipe" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Add role directly
-      const { error: roleError } = await adminClient.from("user_roles").insert({
-        user_id: existingUser.id, clinic_id: clinicId, role, is_active: true,
-      });
+      // Add or reactivate role directly
+      const { error: roleError } = await adminClient.from("user_roles").upsert({
+        user_id: existingUser.id,
+        clinic_id: clinicId,
+        role,
+        is_active: true,
+      }, { onConflict: "user_id,clinic_id,role" });
 
       if (roleError) {
         return new Response(JSON.stringify({ error: roleError.message }), {
@@ -102,7 +106,8 @@ serve(async (req) => {
       // Mark any pending invitation as accepted
       await adminClient.from("team_invitations")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("clinic_id", clinicId).eq("email", email.toLowerCase().trim());
+        .eq("clinic_id", clinicId)
+        .ilike("email", cleanEmail);
 
       // Explicitly guarantee user_access_groups assignment (alongside DB trigger)
       const groupCode = role === 'admin' ? 'admin' : role === 'receptionist' ? 'recepcao' : role === 'professional' ? 'profissionais' : 'comercial';
@@ -127,10 +132,10 @@ serve(async (req) => {
       });
     }
 
-    // User doesn't exist — create a pending invitation
+    // User doesn't exist yet in auth — create pending invitation record
     let { error: invError } = await adminClient.from("team_invitations").upsert({
       clinic_id: clinicId,
-      email: email.toLowerCase().trim(),
+      email: cleanEmail,
       role,
       cargo_name: cargoName ?? null,
       invited_by: user.id,
@@ -141,7 +146,7 @@ serve(async (req) => {
       // Backward compatibility for environments where migration wasn't applied yet.
       const fallback = await adminClient.from("team_invitations").upsert({
         clinic_id: clinicId,
-        email: email.toLowerCase().trim(),
+        email: cleanEmail,
         role,
         invited_by: user.id,
         status: "pending",
@@ -155,9 +160,31 @@ serve(async (req) => {
       });
     }
 
+    // Send real invitation email via Supabase Auth Admin
+    const origin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/$/, "");
+    const redirectTo = origin ? `${origin.replace(/\/$/, "")}/login` : undefined;
+
+    const { data: inviteAuthData, error: inviteAuthErr } = await adminClient.auth.admin.inviteUserByEmail(
+      cleanEmail,
+      {
+        redirectTo,
+        data: {
+          clinic_id: clinicId,
+          role,
+          cargo_name: cargoName ?? null,
+        },
+      }
+    );
+
+    if (inviteAuthErr) {
+      // Non-fatal if invite record was saved (e.g. SMTP limits or already invited in auth), log detail
+      console.warn("inviteUserByEmail warning:", inviteAuthErr.message);
+    }
+
     return new Response(JSON.stringify({
-      message: "Convite criado! O membro receberá o papel ao criar conta.",
+      message: "Convite criado! O membro receberá o papel ao confirmar o convite ou criar conta.",
       status: "invited",
+      invitedAuthUserId: inviteAuthData?.user?.id ?? null,
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
