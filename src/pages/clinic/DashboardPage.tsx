@@ -20,11 +20,12 @@ type AppointmentRow = {
   professional_id: string | null;
   start_time: string;
   status: string;
+  billing_type?: string | null;
   patients?: {
     full_name?: string | null;
-    is_self_payer?: boolean | null;
-    payer_id?: string | null;
-    payers?: { name?: string | null } | null;
+  } | null;
+  health_insurances?: {
+    name?: string | null;
   } | null;
 };
 
@@ -42,7 +43,7 @@ type WaitlistRow = {
   created_at: string;
   patients?: { full_name?: string | null } | null;
   leads?: { full_name?: string | null } | null;
-  treatments?: { name?: string | null; category?: string | null } | null;
+  treatments?: { name?: string | null } | null;
 };
 
 type PeriodCounts = { today: number; week: number; month: number; waitlist: number };
@@ -84,7 +85,7 @@ export default function ClinicDashboard() {
       const [appointmentsResult, professionalsResult, waitlistResult] = await Promise.all([
         supabase
           .from('appointments')
-          .select('id, patient_id, professional_id, start_time, status, patients(full_name, is_self_payer, payer_id, payers(name))')
+          .select('id, patient_id, professional_id, start_time, status, billing_type, patients(full_name), health_insurances(name)')
           .eq('clinic_id', clinicId!)
           .in('status', activeStatuses)
           .gte('start_time', queryStart.toISOString())
@@ -97,7 +98,7 @@ export default function ClinicDashboard() {
           .order('full_name'),
         supabase
           .from('appointment_waitlist')
-          .select('id, preferred_professional_id, priority, status, created_at, patients(full_name), leads(full_name), treatments(name, category)')
+          .select('id, preferred_professional_id, priority, status, created_at, patients(full_name), leads(full_name), treatments(name)')
           .eq('clinic_id', clinicId!)
           .in('status', waitlistStatuses)
           .order('priority', { ascending: false })
@@ -155,14 +156,14 @@ export default function ClinicDashboard() {
       item.waitlist += doctor.waitlist;
     });
     waitlist.filter((item) => !item.preferred_professional_id).forEach((item) => {
-      ensureSpecialty(item.treatments?.category || 'Especialidade não informada').waitlist += 1;
+      ensureSpecialty(item.treatments?.name || 'Especialidade não informada').waitlist += 1;
     });
 
     const coverageMap = new Map<string, number>();
     monthRows.forEach((appointment) => {
-      const patient = appointment.patients;
-      const name = patient?.is_self_payer === false
-        ? patient.payers?.name || 'Convênio não informado'
+      const isInsurance = appointment.billing_type === 'insurance' || !!appointment.health_insurances?.name;
+      const name = isInsurance
+        ? appointment.health_insurances?.name || 'Convênio não informado'
         : 'Particular';
       coverageMap.set(name, (coverageMap.get(name) || 0) + 1);
     });
@@ -233,7 +234,7 @@ export default function ClinicDashboard() {
             {metrics.waitlistRows.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Não há solicitações de encaixe abertas.</p> : (
               <div className="space-y-3">{metrics.waitlistRows.slice(0, 8).map((item) => {
                 const doctor = item.preferred_professional_id ? metrics.professionalMap.get(item.preferred_professional_id) : null;
-                return <div key={item.id} className="flex items-center justify-between gap-4 rounded-lg border p-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{item.patients?.full_name || item.leads?.full_name || 'Solicitação sem nome'}</p><p className="truncate text-xs text-muted-foreground">{doctor ? `${doctor.full_name} · ${doctor.specialty || 'Sem especialidade'}` : item.treatments?.category || item.treatments?.name || 'Qualquer médico'}</p></div><div className="shrink-0 text-right"><Badge variant={item.priority === 'urgent' ? 'destructive' : 'secondary'}>{priorityLabel(item.priority)}</Badge><p className="mt-1 text-xs text-muted-foreground">{format(new Date(item.created_at), 'dd/MM')}</p></div></div>;
+                return <div key={item.id} className="flex items-center justify-between gap-4 rounded-lg border p-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{item.patients?.full_name || item.leads?.full_name || 'Solicitação sem nome'}</p><p className="truncate text-xs text-muted-foreground">{doctor ? `${doctor.full_name} · ${doctor.specialty || 'Sem especialidade'}` : item.treatments?.name || 'Qualquer médico'}</p></div><div className="shrink-0 text-right"><Badge variant={item.priority === 'urgent' ? 'destructive' : 'secondary'}>{priorityLabel(item.priority)}</Badge><p className="mt-1 text-xs text-muted-foreground">{format(new Date(item.created_at), 'dd/MM')}</p></div></div>;
               })}</div>
             )}
           </CardContent>
