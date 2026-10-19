@@ -51,6 +51,13 @@ serve(async (req) => {
   }
 
   try {
+    if (!expectedWebhookToken) {
+      return new Response(JSON.stringify({ ok: false, reason: "webhook_token_not_configured" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRole) throw new Error("SUPABASE env vars not configured");
@@ -63,7 +70,7 @@ serve(async (req) => {
       : null;
     const providedToken = tokenHeader || bearerToken || "";
 
-    if (expectedWebhookToken && providedToken !== expectedWebhookToken) {
+    if (providedToken !== expectedWebhookToken) {
       return new Response(JSON.stringify({ ok: false, reason: "unauthorized_webhook" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
