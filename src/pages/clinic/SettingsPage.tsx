@@ -209,7 +209,7 @@ export default function SettingsPage() {
     loadTeam();
   };
 
-  const roleLabel: Record<string, string> = { admin: 'Admin', receptionist: 'Recepcionista', professional: 'Profissional', sales: 'Vendas' };
+  const roleLabel: Record<string, string> = { admin: 'Admin', receptionist: 'Recepcionista', professional: 'Profissional', sales: 'Comercial' };
   const roleBadgeVariant = (r: string) => r === 'admin' ? 'default' : 'outline';
 
   return (
@@ -362,7 +362,7 @@ export default function SettingsPage() {
                       <p className="text-xs text-muted-foreground">
                         {inviteCargo
                           ? `Perfil de acesso aplicado automaticamente: ${mapCargoToSystemRole(inviteCargo) === 'sales'
-                            ? 'Vendas'
+                            ? 'Comercial'
                             : mapCargoToSystemRole(inviteCargo) === 'receptionist'
                               ? 'Recepcionista'
                               : 'Profissional'

@@ -45,7 +45,7 @@ serve(async (req) => {
 
     const validRoles = ["receptionist", "professional", "sales"];
     if (!validRoles.includes(role)) {
-      return new Response(JSON.stringify({ error: "Papel inválido. Use: recepcionista ou profissional" }), {
+      return new Response(JSON.stringify({ error: "Papel inválido. Use: recepcionista, profissional ou comercial" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -70,20 +70,37 @@ serve(async (req) => {
       });
     }
 
-    // Check if user already exists in auth
-    const { data: { users: existingUsers } } = await adminClient.auth.admin.listUsers();
-    const existingUser = existingUsers?.find((u: unknown) => u.email?.toLowerCase().trim() === cleanEmail);
+    // Check if user already exists in auth (scan every page, listUsers is paginated)
+    let existingUser: { id: string; email?: string } | undefined;
+    for (let page = 1; ; page++) {
+      const { data: usersPage, error: listError } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+      if (listError) {
+        return new Response(JSON.stringify({ error: listError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const users = usersPage?.users ?? [];
+      existingUser = users.find((u) => u.email?.toLowerCase().trim() === cleanEmail);
+      if (existingUser || users.length < 1000) break;
+    }
 
     if (existingUser) {
-      // Check if already has an active role in this clinic
-      const { data: existingRole } = await adminClient
+      // Check if already has an active role in this clinic (a member may hold several roles)
+      const { data: activeRoles, error: activeRolesError } = await adminClient
         .from("user_roles")
-        .select("id, is_active")
+        .select("id")
         .eq("user_id", existingUser.id)
         .eq("clinic_id", clinicId)
-        .maybeSingle();
+        .eq("is_active", true)
+        .limit(1);
 
-      if (existingRole && existingRole.is_active) {
+      if (activeRolesError) {
+        return new Response(JSON.stringify({ error: activeRolesError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (activeRoles && activeRoles.length > 0) {
         return new Response(JSON.stringify({ error: "Este usuário já faz parte da equipe" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -110,7 +127,7 @@ serve(async (req) => {
         .ilike("email", cleanEmail);
 
       // Explicitly guarantee user_access_groups assignment (alongside DB trigger)
-      const groupCode = role === 'admin' ? 'admin' : role === 'receptionist' ? 'recepcao' : role === 'professional' ? 'profissionais' : 'comercial';
+      const groupCode = role === 'receptionist' ? 'recepcao' : role === 'professional' ? 'profissionais' : 'comercial';
       const { data: targetGroup } = await adminClient
         .from("access_groups")
         .select("id")

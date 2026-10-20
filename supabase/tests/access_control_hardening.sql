@@ -8,6 +8,9 @@ DECLARE
   user_a constant uuid := '74000000-0000-0000-0000-000000000001';
   user_b constant uuid := '74000000-0000-0000-0000-000000000002';
   user_c constant uuid := '74000000-0000-0000-0000-000000000003';
+  user_d constant uuid := '74000000-0000-0000-0000-000000000004';
+  role_sales_id uuid;
+  comercial_perms text[];
   active_codes text[];
   role_admin_id uuid;
   role_rec_id uuid;
@@ -84,6 +87,36 @@ BEGIN
   WHERE uag.user_id = user_c AND uag.clinic_id = clinic_a AND uag.is_active;
   IF active_codes IS DISTINCT FROM ARRAY['profissionais'] THEN
     RAISE EXCEPTION 'invited professional should get profissionais, got %', active_codes;
+  END IF;
+
+  -- Commercial (sales) role is staff and only gets the comercial group
+  INSERT INTO auth.users(id, email) VALUES (user_d, 'access-d@test.invalid');
+  INSERT INTO public.user_roles(user_id, clinic_id, role, is_active)
+  VALUES (user_d, clinic_a, 'sales', true) RETURNING id INTO role_sales_id;
+  IF NOT public.is_clinic_staff(user_d, clinic_a) THEN
+    RAISE EXCEPTION 'active commercial member should be staff';
+  END IF;
+  SELECT array_agg(ag.code ORDER BY ag.code) INTO active_codes
+  FROM public.user_access_groups uag JOIN public.access_groups ag ON ag.id = uag.group_id
+  WHERE uag.user_id = user_d AND uag.clinic_id = clinic_a AND uag.is_active;
+  IF active_codes IS DISTINCT FROM ARRAY['comercial'] THEN
+    RAISE EXCEPTION 'commercial member should only get comercial, got %', active_codes;
+  END IF;
+  SELECT array_agg(agp.permission_key ORDER BY agp.permission_key) INTO comercial_perms
+  FROM public.access_group_permissions agp JOIN public.access_groups ag ON ag.id = agp.group_id
+  WHERE ag.clinic_id = clinic_a AND ag.code = 'comercial' AND agp.can_view;
+  IF 'appointments.view' = ANY (comercial_perms) THEN
+    RAISE EXCEPTION 'comercial group must not see appointments, got %', comercial_perms;
+  END IF;
+  UPDATE public.user_roles SET is_active = false WHERE id = role_sales_id;
+  IF public.is_clinic_staff(user_d, clinic_a) THEN
+    RAISE EXCEPTION 'deactivated commercial member must not be staff';
+  END IF;
+  SELECT coalesce(array_agg(ag.code ORDER BY ag.code), '{}') INTO active_codes
+  FROM public.user_access_groups uag JOIN public.access_groups ag ON ag.id = uag.group_id
+  WHERE uag.user_id = user_d AND uag.clinic_id = clinic_a AND uag.is_active;
+  IF active_codes <> '{}'::text[] THEN
+    RAISE EXCEPTION 'deactivated commercial member should have no active groups, got %', active_codes;
   END IF;
 
   RAISE NOTICE 'access control hardening tests passed';

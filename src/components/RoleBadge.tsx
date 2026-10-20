@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
  */
 const roleConfig: Record<string, { label: string; className: string }> = {
   admin:        { label: 'Admin',         className: 'bg-primary-light text-primary-dark' },
-  sales:        { label: 'Vendas',        className: 'bg-[hsl(var(--info-bg))] text-[hsl(var(--info))]' },
+  sales:        { label: 'Comercial',     className: 'bg-[hsl(var(--info-bg))] text-[hsl(var(--info))]' },
   professional: { label: 'Profissional',  className: 'bg-[hsl(var(--success-bg))] text-[hsl(var(--success))]' },
   receptionist: { label: 'Recepção',      className: 'bg-bg-subtle text-[hsl(var(--text-secondary))]' },
   owner:        { label: 'Proprietário',  className: 'bg-[hsl(var(--warning-bg))] text-[hsl(var(--warning))]' },
