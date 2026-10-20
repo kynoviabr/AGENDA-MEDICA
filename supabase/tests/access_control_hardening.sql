@@ -79,14 +79,26 @@ BEGIN
     RAISE EXCEPTION 'deleted professional role should revoke profissionais, got %', active_codes;
   END IF;
 
-  -- Accepted invitation still lands the user in the role's group
+  -- An invited account gets nothing until its email is confirmed
   INSERT INTO public.team_invitations(clinic_id, email, role) VALUES (clinic_a, 'Access-C@test.invalid', 'professional');
   INSERT INTO auth.users(id, email) VALUES (user_c, 'access-c@test.invalid');
+  IF EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = user_c) THEN
+    RAISE EXCEPTION 'unconfirmed invited user must not get a role';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.team_invitations WHERE clinic_id = clinic_a AND email = 'Access-C@test.invalid' AND status = 'pending') THEN
+    RAISE EXCEPTION 'invitation must stay pending until the email is confirmed';
+  END IF;
+
+  -- Confirming the email accepts the invitation and lands the user in the role's group
+  UPDATE auth.users SET email_confirmed_at = now() WHERE id = user_c;
   SELECT array_agg(ag.code ORDER BY ag.code) INTO active_codes
   FROM public.user_access_groups uag JOIN public.access_groups ag ON ag.id = uag.group_id
   WHERE uag.user_id = user_c AND uag.clinic_id = clinic_a AND uag.is_active;
   IF active_codes IS DISTINCT FROM ARRAY['profissionais'] THEN
-    RAISE EXCEPTION 'invited professional should get profissionais, got %', active_codes;
+    RAISE EXCEPTION 'confirmed invited professional should get profissionais, got %', active_codes;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.team_invitations WHERE clinic_id = clinic_a AND email = 'Access-C@test.invalid' AND status = 'accepted') THEN
+    RAISE EXCEPTION 'invitation should be accepted after email confirmation';
   END IF;
 
   -- Commercial (sales) role is staff and only gets the comercial group

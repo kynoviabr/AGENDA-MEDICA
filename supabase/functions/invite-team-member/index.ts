@@ -71,7 +71,7 @@ serve(async (req) => {
     }
 
     // Check if user already exists in auth (scan every page, listUsers is paginated)
-    let existingUser: { id: string; email?: string } | undefined;
+    let existingUser: { id: string; email?: string; email_confirmed_at?: string | null } | undefined;
     for (let page = 1; ; page++) {
       const { data: usersPage, error: listError } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
       if (listError) {
@@ -82,6 +82,32 @@ serve(async (req) => {
       const users = usersPage?.users ?? [];
       existingUser = users.find((u) => u.email?.toLowerCase().trim() === cleanEmail);
       if (existingUser || users.length < 1000) break;
+    }
+
+    // An existing but unconfirmed account (e.g. an invite not yet accepted) only
+    // gets the role once the email is confirmed, through the auth.users trigger.
+    if (existingUser && !existingUser.email_confirmed_at) {
+      const { error: pendingError } = await adminClient.from("team_invitations").upsert({
+        clinic_id: clinicId,
+        email: cleanEmail,
+        role,
+        cargo_name: cargoName ?? null,
+        invited_by: user.id,
+        status: "pending",
+      }, { onConflict: "clinic_id,email" });
+
+      if (pendingError) {
+        return new Response(JSON.stringify({ error: pendingError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        message: "Convite registrado. O membro receberá o papel ao confirmar o e-mail do convite.",
+        status: "invited",
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (existingUser) {
@@ -199,7 +225,7 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      message: "Convite criado! O membro receberá o papel ao confirmar o convite ou criar conta.",
+      message: "Convite criado! O membro receberá o papel ao confirmar o e-mail do convite.",
       status: "invited",
       invitedAuthUserId: inviteAuthData?.user?.id ?? null,
     }), {
