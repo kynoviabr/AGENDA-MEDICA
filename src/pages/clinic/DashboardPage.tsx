@@ -70,6 +70,41 @@ type DashboardRpcData = {
 
 type PeriodCounts = { today: number; week: number; month: number; waitlist: number };
 
+const activeStatuses = ['scheduled', 'confirmed', 'in_progress', 'completed'] as const;
+const waitlistStatuses = ['waiting', 'match_found', 'contact_attempted'] as const;
+
+// PostgREST error for an RPC missing from the schema cache.
+const RPC_NOT_FOUND = 'PGRST202';
+
+// Fallback for databases without get_clinic_dashboard_data (the legacy
+// production project): read the tables directly, as before the RPC existed.
+async function loadDashboardRowsFromTables(clinicId: string, start: Date, end: Date) {
+  const [appointmentsResult, waitlistResult] = await Promise.all([
+    supabase
+      .from('appointments')
+      .select('id, patient_id, professional_id, start_time, status, billing_type, patients(full_name), health_insurances(name)')
+      .eq('clinic_id', clinicId)
+      .in('status', activeStatuses)
+      .gte('start_time', start.toISOString())
+      .lte('start_time', end.toISOString()),
+    supabase
+      .from('appointment_waitlist')
+      .select('id, preferred_professional_id, priority, status, created_at, patients(full_name), leads(full_name), treatments(name)')
+      .eq('clinic_id', clinicId)
+      .in('status', waitlistStatuses)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (appointmentsResult.error) throw appointmentsResult.error;
+  if (waitlistResult.error) throw waitlistResult.error;
+
+  return {
+    appointments: (appointmentsResult.data || []) as unknown as AppointmentRow[],
+    waitlist: (waitlistResult.data || []) as unknown as WaitlistRow[],
+  };
+}
+
 
 function uniquePatients(rows: AppointmentRow[]) {
   return new Set(rows.map((row) => row.patient_id).filter(Boolean)).size;
@@ -119,8 +154,13 @@ export default function ClinicDashboard() {
           .order('full_name'),
       ]);
 
-      if (dashboardResult.error) throw dashboardResult.error;
       if (professionalsResult.error) throw professionalsResult.error;
+      const professionals = (professionalsResult.data || []) as ProfessionalRow[];
+
+      if (dashboardResult.error?.code === RPC_NOT_FOUND) {
+        return { ...(await loadDashboardRowsFromTables(clinicId!, queryStart, queryEnd)), professionals };
+      }
+      if (dashboardResult.error) throw dashboardResult.error;
 
       const dashboardData = (dashboardResult.data || {}) as unknown as DashboardRpcData;
 
@@ -134,7 +174,7 @@ export default function ClinicDashboard() {
           billing_type: row.billing_type,
           health_insurances: row.health_insurance_name ? { name: row.health_insurance_name } : null,
         })),
-        professionals: (professionalsResult.data || []) as ProfessionalRow[],
+        professionals,
         waitlist: (dashboardData.waitlist || []).map((row): WaitlistRow => ({
           id: row.id,
           preferred_professional_id: row.preferred_professional_id,
