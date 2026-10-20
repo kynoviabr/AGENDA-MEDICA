@@ -84,33 +84,10 @@ serve(async (req) => {
       if (existingUser || users.length < 1000) break;
     }
 
-    // An existing but unconfirmed account (e.g. an invite not yet accepted) only
-    // gets the role once the email is confirmed, through the auth.users trigger.
-    if (existingUser && !existingUser.email_confirmed_at) {
-      const { error: pendingError } = await adminClient.from("team_invitations").upsert({
-        clinic_id: clinicId,
-        email: cleanEmail,
-        role,
-        cargo_name: cargoName ?? null,
-        invited_by: user.id,
-        status: "pending",
-      }, { onConflict: "clinic_id,email" });
-
-      if (pendingError) {
-        return new Response(JSON.stringify({ error: pendingError.message }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response(JSON.stringify({
-        message: "Convite registrado. O membro receberá o papel ao confirmar o e-mail do convite.",
-        status: "invited",
-      }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (existingUser) {
+    // An existing but unconfirmed account (e.g. an earlier invite never accepted)
+    // goes through the invitation path below, which re-sends the invite email;
+    // the role is granted once the email is confirmed.
+    if (existingUser?.email_confirmed_at) {
       // Check if already has an active role in this clinic (a member may hold several roles)
       const { data: activeRoles, error: activeRolesError } = await adminClient
         .from("user_roles")
@@ -175,7 +152,7 @@ serve(async (req) => {
       });
     }
 
-    // User doesn't exist yet in auth — create pending invitation record
+    // User doesn't exist yet in auth, or hasn't confirmed: create pending invitation record
     let { error: invError } = await adminClient.from("team_invitations").upsert({
       clinic_id: clinicId,
       email: cleanEmail,

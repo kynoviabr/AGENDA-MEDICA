@@ -3,12 +3,14 @@
 -- inviteUserByEmail creates the auth user immediately, unconfirmed. The previous
 -- AFTER INSERT trigger accepted the invitation and granted the role at that
 -- moment, before the person clicked the invite link. Invitations are now
--- processed when the auth user exists with a confirmed email: on INSERT when
--- the account is created already confirmed, or on UPDATE when email_confirmed_at
--- changes from NULL to a value.
+-- accepted only for an auth user with a confirmed email: when the account is
+-- created already confirmed, when email_confirmed_at changes from NULL to a
+-- value, or when a pending invitation is stored for an already confirmed
+-- account (covering an invite saved while the account was being confirmed).
 
-CREATE OR REPLACE FUNCTION public.process_team_invitation()
-RETURNS trigger
+-- 1. Accept the pending invitations of one confirmed user
+CREATE OR REPLACE FUNCTION public.accept_pending_team_invitations(_user_id uuid, _email text)
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
@@ -16,27 +18,38 @@ AS $$
 DECLARE
   inv RECORD;
 BEGIN
-  IF NEW.email IS NULL OR NEW.email_confirmed_at IS NULL THEN
-    RETURN NEW;
-  END IF;
-
+  -- Claim each still-pending invitation atomically, so a concurrent
+  -- cancellation either wins (nothing is granted) or loses (role granted).
   FOR inv IN
-    SELECT id, clinic_id, role
-    FROM public.team_invitations
-    WHERE lower(trim(email)) = lower(trim(NEW.email))
+    UPDATE public.team_invitations
+    SET status = 'accepted', accepted_at = now(), updated_at = now()
+    WHERE lower(trim(email)) = lower(trim(_email))
       AND status = 'pending'
+    RETURNING clinic_id, role
   LOOP
     -- Access groups follow through trg_sync_user_access_group_on_user_roles
     INSERT INTO public.user_roles (user_id, clinic_id, role, is_active)
-    VALUES (NEW.id, inv.clinic_id, inv.role, true)
+    VALUES (_user_id, inv.clinic_id, inv.role, true)
     ON CONFLICT (user_id, clinic_id, role) DO UPDATE
       SET is_active = true, updated_at = now();
-
-    UPDATE public.team_invitations
-    SET status = 'accepted', accepted_at = now(), updated_at = now()
-    WHERE id = inv.id;
   END LOOP;
+END;
+$$;
 
+REVOKE ALL ON FUNCTION public.accept_pending_team_invitations(uuid, text) FROM PUBLIC, anon, authenticated;
+
+
+-- 2. auth.users side: account created confirmed, or confirmed later
+CREATE OR REPLACE FUNCTION public.process_team_invitation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.email IS NOT NULL AND NEW.email_confirmed_at IS NOT NULL THEN
+    PERFORM public.accept_pending_team_invitations(NEW.id, NEW.email);
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -58,3 +71,56 @@ CREATE TRIGGER on_auth_user_confirmed_process_invitations
   FOR EACH ROW
   WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
   EXECUTE FUNCTION public.process_team_invitation();
+
+
+-- 3. team_invitations side: pending invitation stored for a confirmed account
+CREATE OR REPLACE FUNCTION public.process_pending_team_invitation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_user RECORD;
+BEGIN
+  SELECT id, email INTO v_user
+  FROM auth.users
+  WHERE lower(trim(email)) = lower(trim(NEW.email))
+    AND email_confirmed_at IS NOT NULL
+  LIMIT 1;
+
+  IF v_user.id IS NOT NULL THEN
+    PERFORM public.accept_pending_team_invitations(v_user.id, v_user.email);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.process_pending_team_invitation() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_process_pending_team_invitation ON public.team_invitations;
+CREATE TRIGGER trg_process_pending_team_invitation
+  AFTER INSERT OR UPDATE OF status, email ON public.team_invitations
+  FOR EACH ROW
+  WHEN (NEW.status = 'pending')
+  EXECUTE FUNCTION public.process_pending_team_invitation();
+
+
+-- 4. Undo grants the previous trigger made to accounts that never confirmed
+UPDATE public.user_roles ur
+SET is_active = false, updated_at = now()
+FROM public.team_invitations ti
+JOIN auth.users u ON lower(trim(u.email)) = lower(trim(ti.email))
+WHERE ti.status = 'accepted'
+  AND u.email_confirmed_at IS NULL
+  AND ur.user_id = u.id
+  AND ur.clinic_id = ti.clinic_id
+  AND ur.role = ti.role
+  AND ur.is_active;
+
+UPDATE public.team_invitations ti
+SET status = 'pending', accepted_at = NULL, updated_at = now()
+FROM auth.users u
+WHERE lower(trim(u.email)) = lower(trim(ti.email))
+  AND ti.status = 'accepted'
+  AND u.email_confirmed_at IS NULL;
