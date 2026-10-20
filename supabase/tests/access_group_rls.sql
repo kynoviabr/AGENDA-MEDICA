@@ -102,6 +102,18 @@ BEGIN
     RESET ROLE;
   END;
 
+  -- Handoff RPCs bypass RLS, so they must check WhatsApp IA access themselves
+  PERFORM set_config('request.jwt.claim.sub', '76000000-0000-0000-0000-000000000003', true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM public.take_over_ai_conversation('75000000-0000-0000-0000-000000000001',
+      (SELECT id FROM public.whatsapp_ai_conversations WHERE phone = '+5500000000000'));
+    RESET ROLE;
+    RAISE EXCEPTION 'profissionais should not take over WhatsApp conversations';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RESET ROLE;
+  END;
+
   RAISE NOTICE 'access group RLS tests passed';
 END $$;
 

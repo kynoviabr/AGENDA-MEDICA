@@ -179,3 +179,227 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_clinic_dashboard_data(uuid, timestamptz, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_clinic_dashboard_data(uuid, timestamptz, timestamptz) TO authenticated, service_role;
+
+
+-- 7. WhatsApp IA handoff RPCs bypass RLS (SECURITY DEFINER), so they check the
+--    same whatsapp_ai.view permission as the conversation tables. Bodies are
+--    unchanged apart from that check.
+CREATE OR REPLACE FUNCTION public.authorize_human_conversation_outbound(p_clinic_id uuid, p_conversation_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS(
+    SELECT 1 FROM public.whatsapp_ai_conversations c
+    WHERE c.id=p_conversation_id AND c.clinic_id=p_clinic_id AND c.control_mode='human_active'
+      AND c.assigned_user_id=(SELECT auth.uid())
+      AND public.has_any_menu_access((SELECT auth.uid()), p_clinic_id, ARRAY['whatsapp_ai.view'])
+  )
+$function$
+
+;
+
+CREATE OR REPLACE FUNCTION public.request_ai_conversation_handoff(p_clinic_id uuid, p_conversation_id uuid, p_reason text, p_priority text, p_source text, p_correlation_id uuid, p_summary jsonb DEFAULT '{}'::jsonb, p_description text DEFAULT NULL::text)
+ RETURNS ai_conversation_handoffs
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_handoff public.ai_conversation_handoffs%ROWTYPE;
+  v_service boolean := COALESCE((SELECT auth.role()) = 'service_role', false);
+  v_actor uuid := (SELECT auth.uid());
+BEGIN
+  IF NOT v_service AND NOT public.has_any_menu_access(v_actor, p_clinic_id, ARRAY['whatsapp_ai.view']) THEN
+    RAISE EXCEPTION 'HANDOFF_FORBIDDEN' USING ERRCODE = '42501';
+  END IF;
+  IF v_service AND NOT EXISTS (
+    SELECT 1 FROM public.whatsapp_ai_settings
+    WHERE clinic_id = p_clinic_id AND ai_engine_mode = 'active'
+      AND ai_handoff_enabled = true AND ai_handoff_validated_at IS NOT NULL
+  ) THEN
+    RETURN NULL;
+  END IF;
+  PERFORM 1 FROM public.whatsapp_ai_conversations
+  WHERE id = p_conversation_id AND clinic_id = p_clinic_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'HANDOFF_CONVERSATION_NOT_FOUND' USING ERRCODE = 'P0002';
+  END IF;
+  SELECT * INTO v_handoff FROM public.ai_conversation_handoffs
+  WHERE conversation_id = p_conversation_id
+    AND status IN ('requested', 'queued', 'assigned', 'accepted')
+  ORDER BY requested_at DESC LIMIT 1;
+  IF FOUND THEN RETURN v_handoff; END IF;
+  INSERT INTO public.ai_conversation_handoffs (
+    clinic_id, conversation_id, reason, priority, status, source, correlation_id,
+    sanitized_description, summary, requested_by
+  ) VALUES (
+    p_clinic_id, p_conversation_id, p_reason, p_priority, 'queued', p_source,
+    p_correlation_id, left(p_description, 240), COALESCE(p_summary, '{}'::jsonb),
+    CASE WHEN v_service THEN NULL ELSE v_actor END
+  ) RETURNING * INTO v_handoff;
+  UPDATE public.whatsapp_ai_conversations SET
+    control_mode = 'handoff_pending', active_handoff_id = v_handoff.id,
+    ai_enabled = false, status = 'handoff', assigned_user_id = NULL,
+    control_revision = control_revision + 1,
+    conversation_state = jsonb_set(
+      jsonb_set(conversation_state, '{lastPresentedOptions}', '[]'::jsonb, true),
+      '{activeIntentStatus}', '"collecting"'::jsonb, true
+    )
+  WHERE id = p_conversation_id AND clinic_id = p_clinic_id;
+  INSERT INTO public.ai_handoff_events(
+    clinic_id, conversation_id, handoff_id, action, actor_user_id, reason
+  ) VALUES (
+    p_clinic_id, p_conversation_id, v_handoff.id, 'requested',
+    CASE WHEN v_service THEN NULL ELSE v_actor END, p_reason
+  );
+  INSERT INTO public.ai_handoff_events(
+    clinic_id, conversation_id, handoff_id, action, actor_user_id, reason
+  ) VALUES (
+    p_clinic_id, p_conversation_id, v_handoff.id, 'queued',
+    CASE WHEN v_service THEN NULL ELSE v_actor END, p_reason
+  );
+  RETURN v_handoff;
+END
+$function$
+
+;
+
+CREATE OR REPLACE FUNCTION public.resolve_ai_conversation_handoff(p_clinic_id uuid, p_conversation_id uuid, p_resolution text)
+ RETURNS ai_conversation_handoffs
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_actor uuid:=(SELECT auth.uid()); v_handoff public.ai_conversation_handoffs%ROWTYPE; v_return boolean:=p_resolution='returned_to_ai';
+BEGIN
+  IF NOT public.has_any_menu_access(v_actor, p_clinic_id, ARRAY['whatsapp_ai.view']) THEN RAISE EXCEPTION 'HANDOFF_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  IF p_resolution NOT IN ('resolved_by_human','returned_to_ai','patient_ended','duplicate','other') THEN RAISE EXCEPTION 'HANDOFF_INVALID_RESOLUTION' USING ERRCODE='22023'; END IF;
+  SELECT h.* INTO v_handoff FROM public.ai_conversation_handoffs h JOIN public.whatsapp_ai_conversations c ON c.active_handoff_id=h.id
+  WHERE c.id=p_conversation_id AND c.clinic_id=p_clinic_id FOR UPDATE OF h;
+  IF NOT FOUND THEN RAISE EXCEPTION 'HANDOFF_NOT_ACTIVE' USING ERRCODE='P0002'; END IF;
+  IF v_handoff.assigned_user_id IS NOT NULL AND v_handoff.assigned_user_id<>v_actor AND NOT public.has_clinic_role(v_actor,p_clinic_id,'admin') THEN RAISE EXCEPTION 'HANDOFF_NOT_OWNER' USING ERRCODE='42501'; END IF;
+  UPDATE public.ai_conversation_handoffs SET status='resolved',resolution=p_resolution,resolved_at=now() WHERE id=v_handoff.id RETURNING * INTO v_handoff;
+  UPDATE public.whatsapp_ai_conversations SET
+    control_mode=CASE WHEN v_return THEN 'ai_active' ELSE 'closed' END,
+    status=CASE WHEN v_return THEN 'open' ELSE 'closed' END,
+    ai_enabled=v_return, active_handoff_id=NULL, assigned_user_id=NULL, ai_failure_count=0,
+    control_revision=control_revision+1,
+    conversation_state=jsonb_set(jsonb_set(conversation_state #- '{entities,selectedOption}','{lastPresentedOptions}','[]'::jsonb,true),'{activeIntentStatus}','"collecting"'::jsonb,true)
+  WHERE id=p_conversation_id AND clinic_id=p_clinic_id;
+  INSERT INTO public.ai_handoff_events(clinic_id,conversation_id,handoff_id,action,actor_user_id,reason)
+  VALUES(p_clinic_id,p_conversation_id,v_handoff.id,CASE WHEN v_return THEN 'returned_to_ai' ELSE 'closed' END,v_actor,p_resolution);
+  RETURN v_handoff;
+END; $function$
+
+;
+
+CREATE OR REPLACE FUNCTION public.take_over_ai_conversation(p_clinic_id uuid, p_conversation_id uuid)
+ RETURNS ai_conversation_handoffs
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_actor uuid := (SELECT auth.uid());
+  v_handoff public.ai_conversation_handoffs%ROWTYPE;
+BEGIN
+  IF NOT public.has_any_menu_access(v_actor, p_clinic_id, ARRAY['whatsapp_ai.view']) THEN
+    RAISE EXCEPTION 'HANDOFF_FORBIDDEN' USING ERRCODE='42501';
+  END IF;
+  PERFORM 1 FROM public.whatsapp_ai_conversations
+  WHERE id=p_conversation_id AND clinic_id=p_clinic_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'HANDOFF_CONVERSATION_NOT_FOUND' USING ERRCODE='P0002';
+  END IF;
+  SELECT * INTO v_handoff FROM public.ai_conversation_handoffs
+  WHERE conversation_id=p_conversation_id
+    AND status IN ('requested','queued','assigned','accepted')
+  ORDER BY requested_at DESC LIMIT 1 FOR UPDATE;
+  IF NOT FOUND THEN
+    INSERT INTO public.ai_conversation_handoffs(
+      clinic_id,conversation_id,reason,priority,status,source,summary,requested_by
+    ) VALUES (
+      p_clinic_id,p_conversation_id,'staff_manual_takeover','normal','queued','staff',
+      jsonb_build_object('reason','staff_manual_takeover','knownAdministrativeContext','[]'::jsonb,'whatAuraAlreadyTried','[]'::jsonb),v_actor
+    ) RETURNING * INTO v_handoff;
+    UPDATE public.whatsapp_ai_conversations SET active_handoff_id=v_handoff.id
+    WHERE id=p_conversation_id;
+    INSERT INTO public.ai_handoff_events(
+      clinic_id,conversation_id,handoff_id,action,actor_user_id,reason
+    ) VALUES (
+      p_clinic_id,p_conversation_id,v_handoff.id,'requested',v_actor,'staff_manual_takeover'
+    );
+  END IF;
+  IF v_handoff.status='accepted' AND v_handoff.assigned_user_id=v_actor THEN
+    RETURN v_handoff;
+  END IF;
+  IF v_handoff.assigned_user_id IS NOT NULL
+     AND v_handoff.assigned_user_id <> v_actor
+     AND v_handoff.status IN ('assigned','accepted') THEN
+    RAISE EXCEPTION 'HANDOFF_ALREADY_ASSIGNED' USING ERRCODE='40001';
+  END IF;
+  UPDATE public.ai_conversation_handoffs SET
+    status='accepted', assigned_user_id=v_actor,
+    assigned_at=COALESCE(assigned_at,now()), accepted_at=COALESCE(accepted_at,now())
+  WHERE id=v_handoff.id RETURNING * INTO v_handoff;
+  UPDATE public.whatsapp_ai_conversations SET
+    control_mode='human_active', active_handoff_id=v_handoff.id,
+    assigned_user_id=v_actor, ai_enabled=false, status='handoff',
+    control_revision=control_revision+1
+  WHERE id=p_conversation_id;
+  INSERT INTO public.ai_handoff_events(
+    clinic_id,conversation_id,handoff_id,action,actor_user_id,reason
+  ) VALUES (p_clinic_id,p_conversation_id,v_handoff.id,'assigned',v_actor,v_handoff.reason);
+  INSERT INTO public.ai_handoff_events(
+    clinic_id,conversation_id,handoff_id,action,actor_user_id,reason
+  ) VALUES (p_clinic_id,p_conversation_id,v_handoff.id,'accepted',v_actor,v_handoff.reason);
+  RETURN v_handoff;
+END
+$function$
+
+;
+
+CREATE OR REPLACE FUNCTION public.transfer_ai_conversation(p_clinic_id uuid, p_conversation_id uuid, p_target_user_id uuid)
+ RETURNS ai_conversation_handoffs
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_actor uuid:=(SELECT auth.uid()); v_handoff public.ai_conversation_handoffs%ROWTYPE;
+BEGIN
+  IF NOT public.has_any_menu_access(v_actor, p_clinic_id, ARRAY['whatsapp_ai.view']) OR NOT public.has_any_menu_access(p_target_user_id, p_clinic_id, ARRAY['whatsapp_ai.view']) THEN RAISE EXCEPTION 'HANDOFF_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  SELECT h.* INTO v_handoff FROM public.ai_conversation_handoffs h JOIN public.whatsapp_ai_conversations c ON c.active_handoff_id=h.id
+  WHERE c.id=p_conversation_id AND c.clinic_id=p_clinic_id AND c.control_mode='human_active' FOR UPDATE OF h;
+  IF NOT FOUND THEN RAISE EXCEPTION 'HANDOFF_NOT_ACTIVE' USING ERRCODE='P0002'; END IF;
+  IF v_handoff.assigned_user_id<>v_actor AND NOT public.has_clinic_role(v_actor,p_clinic_id,'admin') THEN RAISE EXCEPTION 'HANDOFF_NOT_OWNER' USING ERRCODE='42501'; END IF;
+  UPDATE public.ai_conversation_handoffs SET assigned_user_id=p_target_user_id,status='assigned',assigned_at=now(),accepted_at=NULL WHERE id=v_handoff.id RETURNING * INTO v_handoff;
+  UPDATE public.whatsapp_ai_conversations SET control_mode='handoff_pending',assigned_user_id=p_target_user_id,control_revision=control_revision+1 WHERE id=p_conversation_id;
+  INSERT INTO public.ai_handoff_events(clinic_id,conversation_id,handoff_id,action,actor_user_id,reason) VALUES(p_clinic_id,p_conversation_id,v_handoff.id,'transferred',v_actor,v_handoff.reason);
+  RETURN v_handoff;
+END; $function$
+
+;
+
+CREATE OR REPLACE FUNCTION public.unassign_ai_conversation(p_clinic_id uuid, p_conversation_id uuid)
+ RETURNS ai_conversation_handoffs
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_actor uuid:=(SELECT auth.uid()); v_handoff public.ai_conversation_handoffs%ROWTYPE;
+BEGIN
+  IF NOT public.has_any_menu_access(v_actor, p_clinic_id, ARRAY['whatsapp_ai.view']) THEN RAISE EXCEPTION 'HANDOFF_FORBIDDEN' USING ERRCODE='42501'; END IF;
+  SELECT h.* INTO v_handoff FROM public.ai_conversation_handoffs h JOIN public.whatsapp_ai_conversations c ON c.active_handoff_id=h.id
+  WHERE c.id=p_conversation_id AND c.clinic_id=p_clinic_id FOR UPDATE OF h;
+  IF NOT FOUND THEN RAISE EXCEPTION 'HANDOFF_NOT_ACTIVE' USING ERRCODE='P0002'; END IF;
+  IF v_handoff.assigned_user_id<>v_actor AND NOT public.has_clinic_role(v_actor,p_clinic_id,'admin') THEN RAISE EXCEPTION 'HANDOFF_NOT_OWNER' USING ERRCODE='42501'; END IF;
+  UPDATE public.ai_conversation_handoffs SET assigned_user_id=NULL,status='queued',assigned_at=NULL,accepted_at=NULL WHERE id=v_handoff.id RETURNING * INTO v_handoff;
+  UPDATE public.whatsapp_ai_conversations SET control_mode='handoff_pending',assigned_user_id=NULL,control_revision=control_revision+1 WHERE id=p_conversation_id;
+  INSERT INTO public.ai_handoff_events(clinic_id,conversation_id,handoff_id,action,actor_user_id,reason) VALUES(p_clinic_id,p_conversation_id,v_handoff.id,'unassigned',v_actor,v_handoff.reason);
+  RETURN v_handoff;
+END; $function$
+
+;
+
