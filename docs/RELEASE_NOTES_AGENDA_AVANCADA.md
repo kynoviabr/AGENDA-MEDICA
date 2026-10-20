@@ -29,7 +29,7 @@ Release: Agenda Avançada (Módulo 2 — Agenda Inteligente)
 
 - Novas estruturas/migrações de suporte operacional da Agenda (sem duplicar entidades existentes).
 - Script de referência da release:
-  - `SQL_RELEASE_AGENDA_AVANCADA_FASE1.txt`
+  - `sql/SQL_RELEASE_AGENDA_AVANCADA_FASE1.txt`
 
 ## Qualidade e Testes
 

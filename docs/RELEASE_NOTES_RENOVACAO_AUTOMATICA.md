@@ -42,5 +42,5 @@ Versão: Renovação Automática (Clinova)
 ## Arquivos de suporte
 
 - Checklist da release: `CHECKLIST_PRD_RENOVACAO_AUTOMATICA.md`
-- Seed de validação: `SQL_SEED_RENOVACAO_AUTOMATICA.txt`
+- Seed de validação: `sql/SQL_SEED_RENOVACAO_AUTOMATICA.txt`
 - Migration: `supabase/migrations/20260516120000_renewal_automation_module.sql`
