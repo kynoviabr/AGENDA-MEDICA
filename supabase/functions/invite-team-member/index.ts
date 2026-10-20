@@ -71,7 +71,7 @@ serve(async (req) => {
     }
 
     // Check if user already exists in auth (scan every page, listUsers is paginated)
-    let existingUser: { id: string; email?: string } | undefined;
+    let existingUser: { id: string; email?: string; email_confirmed_at?: string | null } | undefined;
     for (let page = 1; ; page++) {
       const { data: usersPage, error: listError } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
       if (listError) {
@@ -84,7 +84,10 @@ serve(async (req) => {
       if (existingUser || users.length < 1000) break;
     }
 
-    if (existingUser) {
+    // An existing but unconfirmed account (e.g. an earlier invite never accepted)
+    // goes through the invitation path below, which re-sends the invite email;
+    // the role is granted once the email is confirmed.
+    if (existingUser?.email_confirmed_at) {
       // Check if already has an active role in this clinic (a member may hold several roles)
       const { data: activeRoles, error: activeRolesError } = await adminClient
         .from("user_roles")
@@ -149,7 +152,7 @@ serve(async (req) => {
       });
     }
 
-    // User doesn't exist yet in auth — create pending invitation record
+    // User doesn't exist yet in auth, or hasn't confirmed: create pending invitation record
     let { error: invError } = await adminClient.from("team_invitations").upsert({
       clinic_id: clinicId,
       email: cleanEmail,
@@ -199,7 +202,7 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      message: "Convite criado! O membro receberá o papel ao confirmar o convite ou criar conta.",
+      message: "Convite criado! O membro receberá o papel ao confirmar o e-mail do convite.",
       status: "invited",
       invitedAuthUserId: inviteAuthData?.user?.id ?? null,
     }), {
