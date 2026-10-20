@@ -6033,6 +6033,10 @@ export type Database = {
               start_time: string
             }[]
           }
+      get_clinic_dashboard_data: {
+        Args: { p_clinic_id: string; p_end: string; p_start: string }
+        Returns: Json
+      }
       get_finance_contract_forecast_detail: {
         Args: { p_contract_id: string }
         Returns: Json

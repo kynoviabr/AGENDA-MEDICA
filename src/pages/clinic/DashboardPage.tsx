@@ -46,10 +46,65 @@ type WaitlistRow = {
   treatments?: { name?: string | null } | null;
 };
 
+type DashboardRpcData = {
+  appointments?: Array<{
+    id: string;
+    patient_id: string | null;
+    professional_id: string | null;
+    start_time: string;
+    status: string;
+    billing_type: string | null;
+    health_insurance_name: string | null;
+  }>;
+  waitlist?: Array<{
+    id: string;
+    preferred_professional_id: string | null;
+    priority: string;
+    status: string;
+    created_at: string;
+    patient_name: string | null;
+    lead_name: string | null;
+    treatment_name: string | null;
+  }>;
+};
+
 type PeriodCounts = { today: number; week: number; month: number; waitlist: number };
 
-const activeStatuses = ['scheduled', 'confirmed', 'in_progress', 'completed'];
-const waitlistStatuses = ['waiting', 'match_found', 'contact_attempted'];
+const activeStatuses = ['scheduled', 'confirmed', 'in_progress', 'completed'] as const;
+const waitlistStatuses = ['waiting', 'match_found', 'contact_attempted'] as const;
+
+// PostgREST error for an RPC missing from the schema cache.
+const RPC_NOT_FOUND = 'PGRST202';
+
+// Fallback for databases without get_clinic_dashboard_data (the legacy
+// production project): read the tables directly, as before the RPC existed.
+async function loadDashboardRowsFromTables(clinicId: string, start: Date, end: Date) {
+  const [appointmentsResult, waitlistResult] = await Promise.all([
+    supabase
+      .from('appointments')
+      .select('id, patient_id, professional_id, start_time, status, billing_type, patients(full_name), health_insurances(name)')
+      .eq('clinic_id', clinicId)
+      .in('status', activeStatuses)
+      .gte('start_time', start.toISOString())
+      .lte('start_time', end.toISOString()),
+    supabase
+      .from('appointment_waitlist')
+      .select('id, preferred_professional_id, priority, status, created_at, patients(full_name), leads(full_name), treatments(name)')
+      .eq('clinic_id', clinicId)
+      .in('status', waitlistStatuses)
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (appointmentsResult.error) throw appointmentsResult.error;
+  if (waitlistResult.error) throw waitlistResult.error;
+
+  return {
+    appointments: (appointmentsResult.data || []) as unknown as AppointmentRow[],
+    waitlist: (waitlistResult.data || []) as unknown as WaitlistRow[],
+  };
+}
+
 
 function uniquePatients(rows: AppointmentRow[]) {
   return new Set(rows.map((row) => row.patient_id).filter(Boolean)).size;
@@ -82,37 +137,54 @@ export default function ClinicDashboard() {
   const dashboardQuery = useQuery({
     queryKey: ['operational-dashboard', clinicId, format(now, 'yyyy-MM-dd')],
     queryFn: async () => {
-      const [appointmentsResult, professionalsResult, waitlistResult] = await Promise.all([
-        supabase
-          .from('appointments')
-          .select('id, patient_id, professional_id, start_time, status, billing_type, patients(full_name), health_insurances(name)')
-          .eq('clinic_id', clinicId!)
-          .in('status', activeStatuses)
-          .gte('start_time', queryStart.toISOString())
-          .lte('start_time', queryEnd.toISOString()),
+      // Appointment and waitlist rows come through an RPC so every group with
+      // dashboard access gets the totals; names are only returned to members
+      // allowed to see patients.
+      const [dashboardResult, professionalsResult] = await Promise.all([
+        supabase.rpc('get_clinic_dashboard_data', {
+          p_clinic_id: clinicId!,
+          p_start: queryStart.toISOString(),
+          p_end: queryEnd.toISOString(),
+        }),
         supabase
           .from('professionals')
           .select('id, full_name, specialty')
           .eq('clinic_id', clinicId!)
           .eq('status', 'active')
           .order('full_name'),
-        supabase
-          .from('appointment_waitlist')
-          .select('id, preferred_professional_id, priority, status, created_at, patients(full_name), leads(full_name), treatments(name)')
-          .eq('clinic_id', clinicId!)
-          .in('status', waitlistStatuses)
-          .order('priority', { ascending: false })
-          .order('created_at', { ascending: true }),
       ]);
 
-      if (appointmentsResult.error) throw appointmentsResult.error;
       if (professionalsResult.error) throw professionalsResult.error;
-      if (waitlistResult.error) throw waitlistResult.error;
+      const professionals = (professionalsResult.data || []) as ProfessionalRow[];
+
+      if (dashboardResult.error?.code === RPC_NOT_FOUND) {
+        return { ...(await loadDashboardRowsFromTables(clinicId!, queryStart, queryEnd)), professionals };
+      }
+      if (dashboardResult.error) throw dashboardResult.error;
+
+      const dashboardData = (dashboardResult.data || {}) as unknown as DashboardRpcData;
 
       return {
-        appointments: (appointmentsResult.data || []) as unknown as AppointmentRow[],
-        professionals: (professionalsResult.data || []) as ProfessionalRow[],
-        waitlist: (waitlistResult.data || []) as unknown as WaitlistRow[],
+        appointments: (dashboardData.appointments || []).map((row): AppointmentRow => ({
+          id: row.id,
+          patient_id: row.patient_id,
+          professional_id: row.professional_id,
+          start_time: row.start_time,
+          status: row.status,
+          billing_type: row.billing_type,
+          health_insurances: row.health_insurance_name ? { name: row.health_insurance_name } : null,
+        })),
+        professionals,
+        waitlist: (dashboardData.waitlist || []).map((row): WaitlistRow => ({
+          id: row.id,
+          preferred_professional_id: row.preferred_professional_id,
+          priority: row.priority,
+          status: row.status,
+          created_at: row.created_at,
+          patients: row.patient_name ? { full_name: row.patient_name } : null,
+          leads: row.lead_name ? { full_name: row.lead_name } : null,
+          treatments: row.treatment_name ? { name: row.treatment_name } : null,
+        })),
       };
     },
     enabled: !!clinicId,
