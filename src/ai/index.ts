@@ -23,6 +23,7 @@ export * from './conversation/temporal.ts';
 export * from './conversation/stateMerge.ts';
 export * from './conversation/references.ts';
 export * from './conversation/missingInformation.ts';
+export * from './conversation/messagePacing.ts';
 export * from './usage/AiUsageRecorder.ts';
 export * from './adapters/supabase/SupabaseAiRuntimeRepository.ts';
 export * from './adapters/supabase/SupabaseAiToolRepository.ts';

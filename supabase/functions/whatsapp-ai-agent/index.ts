@@ -4,6 +4,10 @@ import {
   AiMediaProcessingError,
   AiMessageIngestionService,
   buildAssistantPersona,
+  DEFAULT_REPLY_QUIET_PERIOD_MS,
+  mergePendingPatientTexts,
+  splitReplyIntoBubbles,
+  typingDelayMs,
   AudioMessageProcessor,
   DEFAULT_AI_MODEL_CONFIGURATION,
   DocumentMessageProcessor,
@@ -200,6 +204,28 @@ async function decryptToken(payload: string) {
     fromBase64(encryptedValue),
   );
   return new TextDecoder().decode(decrypted);
+}
+
+// Marks the patient's message as read and shows "typing..." until we reply
+// (Meta clears it after 25 seconds or on our next message).
+async function markReadWithTyping(messageId: string, accessToken: string, phoneNumberId: string) {
+  const graphVersion = Deno.env.get("META_GRAPH_API_VERSION") || "v23.0";
+  await fetch(`https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+      typing_indicator: { type: "text" },
+    }),
+    signal: AbortSignal.timeout(5_000),
+  });
+}
+
+function replyQuietPeriodMs() {
+  const configured = Number(Deno.env.get("WHATSAPP_REPLY_QUIET_MS"));
+  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_REPLY_QUIET_PERIOD_MS;
 }
 
 async function sendWhatsAppText(to: string, body: string, accessToken: string, phoneNumberId: string) {
@@ -456,7 +482,7 @@ serve(async (req) => {
       const admin = createClient(supabaseUrl, serviceRole);
       const processed: Record<string, unknown>[] = [];
 
-      for (const inbound of inboundMessages) {
+      for (const [index, inbound] of inboundMessages.entries()) {
       const { data: connection, error: connectionError } = await admin
         .from("whatsapp_connections")
         .select("clinic_id, phone_number_id, token_ciphertext")
@@ -576,7 +602,7 @@ serve(async (req) => {
         });
       }
 
-      const { error: inboundInsertError } = await admin.from("whatsapp_ai_messages").insert({
+      const { data: storedInbound, error: inboundInsertError } = await admin.from("whatsapp_ai_messages").insert({
         clinic_id: clinicId,
         conversation_id: conversation.id,
         lead_id: lead.id,
@@ -586,7 +612,7 @@ serve(async (req) => {
         provider_message_id: inbound.messageId,
         raw_payload: { provider: "meta_cloud_api", message_type: inbound.messageType },
         message_origin: "patient",
-      });
+      }).select("created_at").single();
       if (inboundInsertError) throw inboundInsertError;
 
       await recordOperational(admin, {
@@ -610,6 +636,41 @@ serve(async (req) => {
         continue;
       }
 
+      if (inbound.messageId) {
+        await markReadWithTyping(inbound.messageId, accessToken, connection.phone_number_id).catch(() => undefined);
+      }
+
+      // Patients often write in several short messages. Wait for a quiet
+      // moment and answer the whole burst once, from the last message.
+      let turnText = inbound.text;
+      if (inbound.messageType === "text") {
+        const laterInBatch = inboundMessages.slice(index + 1)
+          .some((item) => item.from === inbound.from && item.phoneNumberId === inbound.phoneNumberId);
+        if (laterInBatch) {
+          processed.push({ messageId: inbound.messageId, conversationId: conversation.id, status: "stored_without_reply", reason: "merged_into_later_message" });
+          continue;
+        }
+        await new Promise((resolve) => setTimeout(resolve, replyQuietPeriodMs()));
+        const { data: newerInbound } = await admin.from("whatsapp_ai_messages")
+          .select("id")
+          .eq("clinic_id", clinicId).eq("conversation_id", conversation.id).eq("direction", "inbound")
+          .gt("created_at", storedInbound?.created_at)
+          .limit(1);
+        if (newerInbound?.length) {
+          processed.push({ messageId: inbound.messageId, conversationId: conversation.id, status: "stored_without_reply", reason: "merged_into_later_message" });
+          continue;
+        }
+        let pendingQuery = admin.from("whatsapp_ai_messages")
+          .select("body, raw_payload")
+          .eq("clinic_id", clinicId).eq("conversation_id", conversation.id).eq("direction", "inbound")
+          .lte("created_at", storedInbound?.created_at);
+        if (conversation.last_outbound_at) pendingQuery = pendingQuery.gt("created_at", conversation.last_outbound_at);
+        const { data: pending } = await pendingQuery.order("created_at", { ascending: false }).limit(10);
+        turnText = mergePendingPatientTexts([...(pending || [])].reverse().map((row: { body: string; raw_payload: { message_type?: string } | null }) => ({
+          body: row.body, messageType: row.raw_payload?.message_type || "text",
+        }))) || inbound.text;
+      }
+
       const engineMode = (settings?.ai_engine_mode || "legacy") as WhatsappAiEngineMode;
       const decision = decideWhatsappAiExecution(engineMode);
       let auraReply: Awaited<ReturnType<WhatsappAuraAiBridge["process"]>> | null = null;
@@ -624,7 +685,7 @@ serve(async (req) => {
             channel: "whatsapp",
             correlationId,
             leadId: lead.id,
-          }, toAuraInbound(inbound, clinicId, conversation.id));
+          }, toAuraInbound({ ...inbound, text: turnText }, clinicId, conversation.id));
           await recordOperational(admin, {
             clinicId, conversationId: conversation.id, correlationId,
             type: 'ai_processing_completed', component: 'conversation', outcome: 'success', latencyMs: Date.now() - aiStartedAt,
@@ -681,8 +742,7 @@ serve(async (req) => {
         // The current inbound message is already stored; drop it from history so
         // the model doesn't see it twice.
         const history = [...(recentMessages || [])].reverse();
-        const last = history[history.length - 1];
-        if (last?.direction === "inbound" && last.body === inbound.text) history.pop();
+        while (history.length && history[history.length - 1].direction === "inbound" && history[history.length - 1].body && turnText.includes(history[history.length - 1].body)) history.pop();
         legacyReply = await generateLeadReply({
           clinicName: clinic.name,
           assistantName: settings?.assistant_name,
@@ -690,7 +750,7 @@ serve(async (req) => {
           responseStyle: settings?.response_style,
           treatments: (treatments || []).map((item: { name: string }) => item.name),
           recentMessages: history,
-          userText: inbound.text,
+          userText: turnText,
           modelOverride: settings?.openai_model,
           defaultGoal: settings?.default_goal,
           handoffMessage: settings?.handoff_message,
@@ -722,9 +782,14 @@ serve(async (req) => {
 
       const outboundStartedAt = Date.now();
       await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_attempt', component: 'outbound', outcome: 'success' });
-      let whatsappResponse: Awaited<ReturnType<typeof sendWhatsAppText>>;
+      let whatsappResponse: Awaited<ReturnType<typeof sendWhatsAppText>> | null = null;
       try {
-        whatsappResponse = await sendWhatsAppText(inbound.from, aiReply.text, accessToken, connection.phone_number_id);
+        const bubbles = splitReplyIntoBubbles(aiReply.text);
+        for (const [bubbleIndex, bubble] of bubbles.entries()) {
+          if (bubbleIndex > 0) await new Promise((resolve) => setTimeout(resolve, typingDelayMs(bubble)));
+          const sent = await sendWhatsAppText(inbound.from, bubble, accessToken, connection.phone_number_id);
+          if (bubbleIndex === 0) whatsappResponse = sent;
+        }
         await recordOperational(admin, { clinicId, conversationId: conversation.id, correlationId, type: 'outbound_success', component: 'outbound', outcome: 'success', latencyMs: Date.now() - outboundStartedAt });
       } catch (error) {
         await recordOperational(admin, {
