@@ -12,10 +12,14 @@ import type { AuraConversationEngine } from './AuraConversationEngine.ts';
 import type { AiToolCoordinator } from '../tools/AuraToolCoordinator.ts';
 import { AuraAiResponseValidator } from '../safety/AuraAiResponseValidator.ts';
 import { AI_SAFE_TEMPLATES } from '../safety/templates.ts';
-import { NoopAiSafetyAuditRecorder, type AiSafetyAuditRecorder, type AiSafetyValidationResult } from '../safety/domain.ts';
+import { NoopAiSafetyAuditRecorder, type AiSafetyAuditRecorder, type AiSafetyValidationInput, type AiSafetyValidationResult } from '../safety/domain.ts';
 import type { AuraHandoffService } from '../handoff/AuraHandoffService.ts';
 import { handoffPolicyForConversation, handoffPolicyForSafety } from '../handoff/policies.ts';
 import type { AiHandoffFeatureConfig, AiHandoffRecord } from '../handoff/domain.ts';
+import type { AiConversationResult } from '../domain/conversation.ts';
+import { buildAssistantPersona } from '../policies/assistantPersona.ts';
+import { acceptVoicedText, VOICED_PLAN_KINDS, type AiResponseVoice } from './AiResponseVoice.ts';
+import { executeAiProviderCall } from './providerExecution.ts';
 
 export interface AiClinicConfigLoader {
   load(context: AiExecutionContext): Promise<AiClinicConfig>;
@@ -25,10 +29,16 @@ export interface AiConversationHistoryLoader {
   loadRecent(context: AiExecutionContext, limit: number): Promise<readonly AiConversationMessage[]>;
 }
 
-export interface AuraAiOrchestratorOptions { now?: () => Date }
+export interface AuraAiOrchestratorOptions {
+  now?: () => Date;
+  responseVoice?: AiResponseVoice;
+  responseVoiceTimeoutMs?: number;
+}
 
 export class AuraAiOrchestrator {
   private readonly now: () => Date;
+  private readonly responseVoice?: AiResponseVoice;
+  private readonly responseVoiceTimeoutMs: number;
 
   constructor(
     private readonly conversationEngine: AuraConversationEngine,
@@ -41,6 +51,8 @@ export class AuraAiOrchestrator {
     private readonly handoffService?: AuraHandoffService,
   ) {
     this.now = options.now ?? (() => new Date());
+    this.responseVoice = options.responseVoice;
+    this.responseVoiceTimeoutMs = options.responseVoiceTimeoutMs ?? 6_000;
   }
 
   async respond(context: AiExecutionContext, message: AiNormalizedMessage): Promise<AiResponse> {
@@ -68,17 +80,11 @@ export class AuraAiOrchestrator {
     const conversation = await this.conversationEngine.process(context, message, config, this.buildClinicContext(config));
     const toolResponse = await this.toolCoordinator?.executeIfPlanned(context, conversation, config, message.normalizedText);
     const draft = toolResponse?.text || conversation.responseText;
-    let validation: AiSafetyValidationResult;
-    try {
-      validation = this.responseValidator.validate({
-        context, message, conversation, draftResponse: draft, toolResult: toolResponse?.result,
-      });
-    } catch {
-      validation = {
-        disposition: 'require_handoff', violations: [{ category: 'unsupported_claim', validator: 'fail_closed', severity: 'critical' }],
-        grounded: false, requiresClarification: false, requiresHandoff: true,
-        safeResponse: AI_SAFE_TEMPLATES.technical, latencyMs: 0,
-      };
+    const voiced = toolResponse ? null : await this.voice(context, message, conversation, config);
+    let validation = this.validateDraft(context, message, conversation, voiced || draft, toolResponse?.result);
+    // A rewrite the validator would not send as-is falls back to the fixed phrase.
+    if (voiced && validation.disposition !== 'allow') {
+      validation = this.validateDraft(context, message, conversation, draft, toolResponse?.result);
     }
     await this.recordSafety(context, validation);
     const safetySignal = handoffPolicyForSafety(validation.disposition, validation.violations.map((item) => item.category));
@@ -110,6 +116,62 @@ export class AuraAiOrchestrator {
       safetyViolationCategories: validation.violations.map((item) => item.category),
       handoffOperational: Boolean(handoff), handoffId: handoff?.id,
     };
+  }
+
+  private validateDraft(
+    context: AiExecutionContext,
+    message: AiNormalizedMessage,
+    conversation: AiConversationResult,
+    draftResponse: string,
+    toolResult?: AiSafetyValidationInput['toolResult'],
+  ): AiSafetyValidationResult {
+    try {
+      return this.responseValidator.validate({ context, message, conversation, draftResponse, toolResult });
+    } catch {
+      return {
+        disposition: 'require_handoff', violations: [{ category: 'unsupported_claim', validator: 'fail_closed', severity: 'critical' }],
+        grounded: false, requiresClarification: false, requiresHandoff: true,
+        safeResponse: AI_SAFE_TEMPLATES.technical, latencyMs: 0,
+      };
+    }
+  }
+
+  // Turns the engine's fixed phrases (missing-data questions, handoff notice) into the
+  // assistant's own words. Any failure keeps the fixed phrase.
+  private async voice(
+    context: AiExecutionContext,
+    message: AiNormalizedMessage,
+    conversation: AiConversationResult,
+    config: AiClinicConfig,
+  ): Promise<string | null> {
+    if (!this.responseVoice || !VOICED_PLAN_KINDS.has(conversation.responsePlan.kind)) return null;
+    const input = {
+      persona: buildAssistantPersona(config),
+      planKind: conversation.responsePlan.kind,
+      requiredMessage: conversation.responseText,
+      patientMessage: message.normalizedText,
+      mustInclude: conversation.clarification?.candidates,
+    };
+    const startedAt = performance.now();
+    try {
+      const output = await executeAiProviderCall((signal) => this.responseVoice!.rewrite({ ...input, signal }), {
+        timeoutMs: this.responseVoiceTimeoutMs, maxAttempts: 1,
+      });
+      await this.usageRecorder.record({
+        context, messageType: message.originalType, requestType: 'llm_response', provider: output.provider, model: output.model,
+        inputUnits: output.usage.inputTokens, outputUnits: output.usage.outputTokens, totalUnits: output.usage.totalTokens,
+        providerLatencyMs: output.latencyMs, totalLatencyMs: output.latencyMs,
+        outcome: 'success', occurredAt: this.now().toISOString(),
+      }).catch(() => undefined);
+      return acceptVoicedText(input, output.text) ? output.text.trim() : null;
+    } catch {
+      await this.usageRecorder.record({
+        context, messageType: message.originalType, requestType: 'llm_response', provider: this.responseVoice.name,
+        totalLatencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        outcome: 'error', errorCode: 'response_voice_failed', occurredAt: this.now().toISOString(),
+      }).catch(() => undefined);
+      return null;
+    }
   }
 
   private preflightResponse(validation: AiSafetyValidationResult, handoff?: AiHandoffRecord | null): AiResponse {

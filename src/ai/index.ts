@@ -18,6 +18,7 @@ export * from './processors/DocumentMessageProcessor.ts';
 export * from './services/AiMessageIngestionService.ts';
 export * from './services/AuraAiOrchestrator.ts';
 export * from './services/AuraConversationEngine.ts';
+export * from './services/AiResponseVoice.ts';
 export * from './services/providerExecution.ts';
 export * from './conversation/temporal.ts';
 export * from './conversation/stateMerge.ts';
