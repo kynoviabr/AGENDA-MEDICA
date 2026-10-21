@@ -85,6 +85,7 @@ export interface AiToolResponseComposition {
 export interface AiToolResponseComposer {
   compose(input: {
     clinicName: string;
+    persona?: string;
     preferredLanguage: string;
     responseStyle: string;
     intent: AiConversationIntent;

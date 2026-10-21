@@ -1,4 +1,5 @@
 import type { AiConversationResult, AiConversationStateRepository } from '../domain/conversation.ts';
+import { buildAssistantPersona } from '../policies/assistantPersona.ts';
 import type { AiClinicConfig, AiExecutionContext } from '../domain/models.ts';
 import type { AiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { NoopAiUsageRecorder } from '../usage/AiUsageRecorder.ts';
@@ -49,7 +50,7 @@ export class AuraToolCoordinator implements AiToolCoordinator {
     await this.persistToolState(context, conversation, result);
     const sanitized = sanitizeForModel(result);
     const composed = await executeAiProviderCall((signal) => this.composer.compose({
-      clinicName: config.clinicName, preferredLanguage: config.preferredLanguage,
+      clinicName: config.clinicName, persona: buildAssistantPersona(config), preferredLanguage: config.preferredLanguage,
       responseStyle: config.responseStyle, intent: conversation.intent, result: sanitized, signal,
     }), this.executionPolicy);
     await this.usageRecorder.record({

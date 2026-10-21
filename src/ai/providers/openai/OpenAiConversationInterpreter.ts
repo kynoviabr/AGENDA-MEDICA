@@ -74,6 +74,7 @@ export class OpenAiConversationInterpreter implements AiConversationInterpreter 
         store: false,
         max_output_tokens: 900,
         instructions: [
+          request.persona ? `PERSONA (use para escrever response_text):\n${request.persona}` : '',
           'Você interpreta um turno de atendimento administrativo de clínica. Retorne apenas o schema solicitado.',
           'Produza somente patch: nunca copie nem substitua o state inteiro. Não invente fatos, disponibilidade ou ações concluídas.',
           'Correções substituem somente o campo citado. Negação nunca seleciona a entidade negada; use listas excluded.',
@@ -83,7 +84,7 @@ export class OpenAiConversationInterpreter implements AiConversationInterpreter 
           `Timezone explícito: ${request.timezone}. Momento do turno: ${request.now}.`,
           `Idioma: ${request.preferredLanguage}. Estilo: ${request.responseStyle}.`,
           request.clinicContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
         input: [
           { role: 'developer', content: `STATE_JSON=${JSON.stringify(request.state)}` },
           ...request.history.map((item) => ({ role: item.role, content: item.text })),

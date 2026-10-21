@@ -7,6 +7,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,8 @@ import AdministrativeKnowledgeSettings from './AdministrativeKnowledgeSettings';
 type WhatsAppAiSettings = {
   clinic_id: string;
   openai_model: string;
+  assistant_name: string;
+  assistant_personality: string | null;
   handoff_message: string;
   default_goal: string;
   ai_engine_mode: 'legacy' | 'shadow' | 'active';
@@ -71,6 +74,8 @@ const metaConfigId = import.meta.env.VITE_META_CONFIG_ID as string | undefined;
 const defaultSettings = (clinicId: string): WhatsAppAiSettings => ({
   clinic_id: clinicId,
   openai_model: 'gpt-5.6-luna',
+  assistant_name: 'Aura',
+  assistant_personality: null,
   handoff_message: 'Vou chamar uma pessoa da equipe para te ajudar melhor.',
   default_goal: 'Conduzir leads para uma avaliação humana.',
   ai_engine_mode: 'legacy',
@@ -109,7 +114,7 @@ export default function WhatsAppAiSettingsTab() {
     queryKey: ['whatsapp-ai-settings', clinicId],
     queryFn: async () => {
       const { data, error } = await supabase.from('whatsapp_ai_settings' as never)
-        .select('clinic_id, openai_model, handoff_message, default_goal, ai_engine_mode, ai_handoff_enabled, ai_handoff_validated_at').eq('clinic_id', clinicId!).maybeSingle();
+        .select('clinic_id, openai_model, assistant_name, assistant_personality, handoff_message, default_goal, ai_engine_mode, ai_handoff_enabled, ai_handoff_validated_at').eq('clinic_id', clinicId!).maybeSingle();
       if (error) throw error;
       return (data as WhatsAppAiSettings | null) || defaultSettings(clinicId!);
     },
@@ -153,6 +158,8 @@ export default function WhatsAppAiSettingsTab() {
         clinic_id: clinicId,
         is_enabled: true,
         openai_model: form.openai_model,
+        assistant_name: (form.assistant_name || '').trim() || 'Aura',
+        assistant_personality: form.assistant_personality?.trim() || null,
         handoff_message: form.handoff_message,
         default_goal: form.default_goal,
       } as never, { onConflict: 'clinic_id' });
@@ -284,6 +291,8 @@ export default function WhatsAppAiSettingsTab() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2"><Label>Nome da assistente</Label><Input value={form.assistant_name || ''} maxLength={40} onChange={(event) => setForm({ ...form, assistant_name: event.target.value })} placeholder="Aura" disabled={!canManage} /><p className="text-xs text-muted-foreground">É como ela se apresenta aos pacientes. Se perguntarem, ela informa que é uma assistente virtual com IA.</p></div>
+            <div className="space-y-2"><Label>Jeito de falar</Label><Textarea value={form.assistant_personality || ''} maxLength={500} onChange={(event) => setForm({ ...form, assistant_personality: event.target.value })} rows={3} placeholder="Ex.: simpática e próxima, trata o paciente por você, usa emoji com moderação." disabled={!canManage} /></div>
             <div className="space-y-2"><Label>Objetivo da assistente</Label><Textarea value={form.default_goal} onChange={(event) => setForm({ ...form, default_goal: event.target.value })} rows={4} disabled={!canManage} /></div>
             <div className="space-y-2"><Label>Mensagem para atendimento humano</Label><Textarea value={form.handoff_message} onChange={(event) => setForm({ ...form, handoff_message: event.target.value })} rows={4} disabled={!canManage} /></div>
           </div>
