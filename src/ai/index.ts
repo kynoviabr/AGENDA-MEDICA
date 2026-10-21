@@ -2,6 +2,7 @@ export * from './domain/models.ts';
 export * from './domain/conversation.ts';
 export * from './errors/AiError.ts';
 export * from './policies/auraCorePolicy.ts';
+export * from './policies/assistantPersona.ts';
 export * from './policies/mediaPolicy.ts';
 export * from './providers/contracts.ts';
 export * from './providers/openai/openAiHttp.ts';

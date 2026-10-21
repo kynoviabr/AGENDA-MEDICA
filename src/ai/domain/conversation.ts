@@ -188,6 +188,7 @@ export interface AiConversationInterpreterRequest {
   history: readonly AiConversationMessage[];
   message: AiNormalizedMessage;
   clinicContext: string;
+  persona?: string;
   preferredLanguage: string;
   responseStyle: string;
   timezone: string;

@@ -126,6 +126,8 @@ export interface AiClinicConfig {
   enabled: boolean;
   preferredLanguage: string;
   responseStyle: string;
+  assistantName?: string;
+  assistantPersonality?: string;
   timezone?: string;
   administrativeContext?: readonly string[];
   toolExecution?: import('../tools/domain.ts').AiToolExecutionConfig;

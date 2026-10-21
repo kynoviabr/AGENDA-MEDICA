@@ -5370,6 +5370,8 @@ export type Database = {
           ai_mutation_tools_enabled: boolean
           ai_read_tools_enabled: boolean
           ai_read_tools_validated_at: string | null
+          assistant_name: string
+          assistant_personality: string | null
           clinic_id: string
           created_at: string
           default_goal: string
@@ -5397,6 +5399,8 @@ export type Database = {
           ai_mutation_tools_enabled?: boolean
           ai_read_tools_enabled?: boolean
           ai_read_tools_validated_at?: string | null
+          assistant_name?: string
+          assistant_personality?: string | null
           clinic_id: string
           created_at?: string
           default_goal?: string
@@ -5424,6 +5428,8 @@ export type Database = {
           ai_mutation_tools_enabled?: boolean
           ai_read_tools_enabled?: boolean
           ai_read_tools_validated_at?: string | null
+          assistant_name?: string
+          assistant_personality?: string | null
           clinic_id?: string
           created_at?: string
           default_goal?: string

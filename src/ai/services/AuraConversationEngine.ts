@@ -14,6 +14,7 @@ import type { AiClinicConfig, AiExecutionContext, AiNormalizedMessage } from '..
 import type { AiConversationHistoryLoader } from './AuraAiOrchestrator.ts';
 import { AiConversationInterpretationError, AiConversationStateConflictError, normalizeAiProviderError } from '../errors/AiError.ts';
 import { evaluateAuraAdministrativeSafety } from '../policies/auraCorePolicy.ts';
+import { buildAssistantPersona } from '../policies/assistantPersona.ts';
 import type { AiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { NoopAiUsageRecorder } from '../usage/AiUsageRecorder.ts';
 import { DefaultAiRequiredFieldsPolicy, clarificationForMissingField } from '../conversation/missingInformation.ts';
@@ -86,6 +87,7 @@ export class AuraConversationEngine {
         history,
         message,
         clinicContext,
+        persona: buildAssistantPersona(config),
         preferredLanguage: config.preferredLanguage,
         responseStyle: config.responseStyle,
         timezone: config.timezone || 'America/Sao_Paulo',
@@ -264,9 +266,6 @@ export class AuraConversationEngine {
   }
 
   private shortResponse(value: string) {
-    const trimmed = value.trim().slice(0, 600);
-    const firstQuestion = trimmed.indexOf('?');
-    if (firstQuestion < 0) return trimmed;
-    return trimmed.slice(0, firstQuestion + 1);
+    return value.trim().slice(0, 600);
   }
 }

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   AiMediaProcessingError,
   AiMessageIngestionService,
+  buildAssistantPersona,
   AudioMessageProcessor,
   DEFAULT_AI_MODEL_CONFIGURATION,
   DocumentMessageProcessor,
@@ -242,6 +243,9 @@ function extractOpenAIText(payload: Record<string, unknown>) {
 
 async function generateLeadReply(params: {
   clinicName: string;
+  assistantName?: string | null;
+  assistantPersonality?: string | null;
+  responseStyle?: string | null;
   treatments: string[];
   recentMessages: Array<{ direction: string; body: string }>;
   userText: string;
@@ -254,9 +258,15 @@ async function generateLeadReply(params: {
 
   const model = params.modelOverride || Deno.env.get("OPENAI_MODEL") || "gpt-5.6-luna";
   const instructions = [
-    `Voce e a assistente de WhatsApp da clinica ${params.clinicName}.`,
+    buildAssistantPersona({
+      clinicName: params.clinicName,
+      assistantName: params.assistantName,
+      assistantPersonality: params.assistantPersonality,
+      responseStyle: params.responseStyle || "curta, profissional e acolhedora",
+      preferredLanguage: "pt-BR",
+    }),
     `Objetivo: ${params.defaultGoal || "responder leads com cordialidade, tirar duvidas gerais e conduzir para uma avaliacao."}`,
-    "Estilo: portugues do Brasil, humano, curto, profissional e caloroso. Use no maximo 3 frases.",
+    "Use no maximo 3 frases.",
     "Nao diagnostique, nao prometa resultado estetico e nao invente precos ou disponibilidade.",
     "Quando houver interesse, colete nome, procedimento de interesse e melhor horario para contato.",
     `Se a pessoa relatar urgencia medica, reacao adversa, dor intensa ou reclamacao seria, responda: ${params.handoffMessage || "Vou chamar uma pessoa da equipe para te ajudar melhor."}`,
@@ -462,7 +472,7 @@ serve(async (req) => {
       const accessToken = await decryptToken(connection.token_ciphertext);
       const [{ data: clinic, error: clinicError }, { data: settings }, { data: treatments }] = await Promise.all([
         admin.from("clinics").select("id, name").eq("id", clinicId).maybeSingle(),
-        admin.from("whatsapp_ai_settings").select("is_enabled, openai_model, default_goal, handoff_message, ai_engine_mode, preferred_language, response_style").eq("clinic_id", clinicId).maybeSingle(),
+        admin.from("whatsapp_ai_settings").select("is_enabled, openai_model, default_goal, handoff_message, ai_engine_mode, preferred_language, response_style, assistant_name, assistant_personality").eq("clinic_id", clinicId).maybeSingle(),
         admin.from("treatments").select("name").eq("clinic_id", clinicId).eq("is_active", true).order("name").limit(20),
       ]);
       if (clinicError) throw clinicError;
@@ -668,10 +678,18 @@ serve(async (req) => {
           .eq("conversation_id", conversation.id)
           .order("created_at", { ascending: false })
           .limit(10);
+        // The current inbound message is already stored; drop it from history so
+        // the model doesn't see it twice.
+        const history = [...(recentMessages || [])].reverse();
+        const last = history[history.length - 1];
+        if (last?.direction === "inbound" && last.body === inbound.text) history.pop();
         legacyReply = await generateLeadReply({
           clinicName: clinic.name,
+          assistantName: settings?.assistant_name,
+          assistantPersonality: settings?.assistant_personality,
+          responseStyle: settings?.response_style,
           treatments: (treatments || []).map((item: { name: string }) => item.name),
-          recentMessages: [...(recentMessages || [])].reverse(),
+          recentMessages: history,
           userText: inbound.text,
           modelOverride: settings?.openai_model,
           defaultGoal: settings?.default_goal,

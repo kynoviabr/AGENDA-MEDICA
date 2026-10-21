@@ -35,9 +35,9 @@ export class SupabaseAiClinicConfigLoader implements AiClinicConfigLoader {
     const [clinic, settings, location] = await Promise.all([
       unwrap<{ id: string; name: string } | null>(this.client.from('clinics')
         .select('id,name').eq('id', context.clinicId).maybeSingle()),
-      unwrap<{ is_enabled: boolean; preferred_language: string | null; response_style: string | null; ai_engine_mode: 'legacy' | 'shadow' | 'active'; ai_read_tools_enabled: boolean; ai_read_tools_validated_at: string | null; ai_mutation_tools_enabled: boolean; ai_knowledge_enabled: boolean; ai_knowledge_validated_at: string | null; ai_handoff_enabled: boolean; ai_handoff_validated_at: string | null } | null>(
+      unwrap<{ is_enabled: boolean; preferred_language: string | null; response_style: string | null; assistant_name: string | null; assistant_personality: string | null; ai_engine_mode: 'legacy' | 'shadow' | 'active'; ai_read_tools_enabled: boolean; ai_read_tools_validated_at: string | null; ai_mutation_tools_enabled: boolean; ai_knowledge_enabled: boolean; ai_knowledge_validated_at: string | null; ai_handoff_enabled: boolean; ai_handoff_validated_at: string | null } | null>(
         this.client.from('whatsapp_ai_settings')
-          .select('is_enabled,preferred_language,response_style,ai_engine_mode,ai_read_tools_enabled,ai_read_tools_validated_at,ai_mutation_tools_enabled,ai_knowledge_enabled,ai_knowledge_validated_at,ai_handoff_enabled,ai_handoff_validated_at').eq('clinic_id', context.clinicId).maybeSingle(),
+          .select('is_enabled,preferred_language,response_style,assistant_name,assistant_personality,ai_engine_mode,ai_read_tools_enabled,ai_read_tools_validated_at,ai_mutation_tools_enabled,ai_knowledge_enabled,ai_knowledge_validated_at,ai_handoff_enabled,ai_handoff_validated_at').eq('clinic_id', context.clinicId).maybeSingle(),
       ),
       unwrap<{ timezone: string } | null>(this.client.from('clinic_locations')
         .select('timezone').eq('clinic_id', context.clinicId).eq('active', true)
@@ -48,6 +48,8 @@ export class SupabaseAiClinicConfigLoader implements AiClinicConfigLoader {
       clinicId: clinic.id, clinicName: clinic.name, enabled: settings?.is_enabled !== false,
       preferredLanguage: settings?.preferred_language || 'pt-BR',
       responseStyle: settings?.response_style || 'curta, profissional e acolhedora',
+      assistantName: settings?.assistant_name || undefined,
+      assistantPersonality: settings?.assistant_personality || undefined,
       timezone: location?.timezone || 'America/Sao_Paulo',
       toolExecution: {
         engineMode: settings?.ai_engine_mode || 'legacy', readEnabled: settings?.ai_read_tools_enabled === true,
